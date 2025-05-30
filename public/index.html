@@ -9,65 +9,114 @@
 </head>
 <body>
     <div class="container">
-        <h1>Score Board</h1>
-        
-        <div class="score-display">
-            <h2>Current Score: <span id="current-score">0</span></h2>
-            <div class="reset-score">
-                <input type="number" id="reset-score-value" placeholder="New score">
-                <button id="reset-score-btn" class="btn btn-warning btn-sm"><i class="fas fa-sync"></i> Reset</button>
-            </div>
-            <div class="sync-info">
-                <p>Sync ID: <span id="sync-id">-</span></p>
-                <div class="sync-controls">
-                    <button id="toggle-offline" class="btn btn-sm"><i class="fas fa-wifi"></i> Toggle Online</button>
+        <!-- Login Page -->
+        <div id="login-page" class="page active">
+            <h1>Score Board</h1>
+            <div class="login-options">
+                <div class="login-card">
+                    <h2>Create New Board</h2>
+                    <div class="input-group">
+                        <label for="new-board-id">Board ID</label>
+                        <input type="text" id="new-board-id" placeholder="Choose a unique ID">
+                    </div>
+                    <div class="input-group">
+                        <label for="new-board-password">Password</label>
+                        <input type="password" id="new-board-password" placeholder="Create a password">
+                    </div>
+                    <button id="create-board-btn" class="btn btn-primary">Create Board</button>
                 </div>
-                <div id="sync-status"></div>
+
+                <div class="login-card">
+                    <h2>Access Existing Board</h2>
+                    <div class="input-group">
+                        <label for="existing-board-id">Board ID</label>
+                        <input type="text" id="existing-board-id" placeholder="Enter board ID">
+                    </div>
+                    <div class="input-group">
+                        <label for="existing-board-password">Password</label>
+                        <input type="password" id="existing-board-password" placeholder="Enter password">
+                    </div>
+                    <button id="access-board-btn" class="btn btn-primary">Access Board</button>
+                </div>
+            </div>
+
+            <div class="existing-boards">
+                <h2>Available Boards</h2>
+                <div id="board-list" class="board-list">
+                    <!-- Board list will be populated here -->
+                    <p class="loading">Loading available boards...</p>
+                </div>
             </div>
         </div>
-        
-        <div class="score-controls">
-            <button id="add-score" class="btn btn-primary">
-                <i class="fas fa-plus"></i> Add Score
-            </button>
-            <button id="minus-score" class="btn btn-danger">
-                <i class="fas fa-minus"></i> Subtract Score
-            </button>
-        </div>
-        
-        <div class="reason-section">
-            <h3>Select a Reason</h3>
-            <div id="reason-cards" class="reason-cards">
-                <!-- Reason cards will be dynamically added here -->
+
+        <!-- Main Score Board Page -->
+        <div id="scoreboard-page" class="page">
+            <div class="page-header">
+                <h1>Score Board</h1>
+                <div class="page-actions">
+                    <button id="logout-btn" class="btn btn-sm"><i class="fas fa-sign-out-alt"></i> Logout</button>
+                    <button id="delete-board-btn" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i> Delete Board</button>
+                </div>
+            </div>
+
+            <div class="score-display">
+                <h2>Current Score: <span id="current-score">0</span></h2>
+                <div class="reset-score">
+                    <input type="number" id="reset-score-value" placeholder="New score">
+                    <button id="reset-score-btn" class="btn btn-warning btn-sm"><i class="fas fa-sync"></i> Reset</button>
+                </div>
+                <div class="sync-info">
+                    <p>Board ID: <span id="sync-id">-</span></p>
+                    <div class="sync-controls">
+                        <button id="toggle-offline" class="btn btn-sm"><i class="fas fa-wifi"></i> Toggle Online</button>
+                    </div>
+                    <div id="sync-status"></div>
+                </div>
             </div>
             
-            <div class="new-reason">
-                <h3>Add New Reason</h3>
-                <div class="input-group">
-                    <input type="text" id="new-reason-text" placeholder="Enter reason">
-                    <input type="number" id="new-reason-score" placeholder="Score value">
-                    <button id="add-reason" class="btn btn-success">Add</button>
+            <div class="score-controls">
+                <button id="add-score" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Add Score
+                </button>
+                <button id="minus-score" class="btn btn-danger">
+                    <i class="fas fa-minus"></i> Subtract Score
+                </button>
+            </div>
+            
+            <div class="reason-section">
+                <h3>Select a Reason</h3>
+                <div id="reason-cards" class="reason-cards">
+                    <!-- Reason cards will be dynamically added here -->
+                </div>
+                
+                <div class="new-reason">
+                    <h3>Add New Reason</h3>
+                    <div class="input-group">
+                        <input type="text" id="new-reason-text" placeholder="Enter reason">
+                        <input type="number" id="new-reason-score" placeholder="Score value">
+                        <button id="add-reason" class="btn btn-success">Add</button>
+                    </div>
                 </div>
             </div>
-        </div>
-        
-        <div class="history-section">
-            <h3>History</h3>
-            <div class="table-container">
-                <table id="history-table">
-                    <thead>
-                        <tr>
-                            <th>Date/Time</th>
-                            <th>Reason</th>
-                            <th>Score Change</th>
-                            <th>New Score</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- History entries will be dynamically added here -->
-                    </tbody>
-                </table>
+            
+            <div class="history-section">
+                <h3>History</h3>
+                <div class="table-container">
+                    <table id="history-table">
+                        <thead>
+                            <tr>
+                                <th>Date/Time</th>
+                                <th>Reason</th>
+                                <th>Score Change</th>
+                                <th>New Score</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- History entries will be dynamically added here -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -81,6 +130,19 @@
                 <input type="text" id="edit-reason-text" placeholder="Enter reason">
                 <input type="number" id="edit-reason-score" placeholder="Score value">
                 <button id="save-edit" class="btn btn-success">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="delete-confirm-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-delete">&times;</span>
+            <h3>Delete Board</h3>
+            <p>Are you sure you want to permanently delete this board?</p>
+            <p>This action cannot be undone.</p>
+            <div class="modal-actions">
+                <button id="confirm-delete" class="btn btn-danger">Delete</button>
+                <button id="cancel-delete" class="btn">Cancel</button>
             </div>
         </div>
     </div>

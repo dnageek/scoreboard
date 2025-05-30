@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
+const bcrypt = require('bcrypt');
 
 // Load environment variables
 dotenv.config();
@@ -64,6 +65,10 @@ const ScoreBoardSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
+  password: {
+    type: String,
+    required: true
+  },
   currentScore: {
     type: Number,
     default: 0
@@ -85,7 +90,38 @@ app.get('/api/scoreboard/test-connection', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'Server is available' });
 });
 
-// Get score board by syncId
+// Get all available boards (without sensitive data)
+app.get('/api/scoreboards', async (req, res) => {
+  try {
+    const boards = await ScoreBoard.find({}, 'syncId lastUpdated');
+    res.json(boards);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Verify password for a board
+app.post('/api/scoreboard/verify', async (req, res) => {
+  try {
+    const { syncId, password } = req.body;
+    
+    const scoreBoard = await ScoreBoard.findOne({ syncId });
+    if (!scoreBoard) {
+      return res.status(404).json({ message: 'Score board not found' });
+    }
+    
+    const passwordMatch = await bcrypt.compare(password, scoreBoard.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ message: 'Invalid password' });
+    }
+    
+    res.json({ message: 'Password verified', success: true });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Get score board by syncId with password verification
 app.get('/api/scoreboard/:syncId', async (req, res) => {
   // Skip the test-connection route
   if (req.params.syncId === 'test-connection') {
@@ -97,6 +133,25 @@ app.get('/api/scoreboard/:syncId', async (req, res) => {
     if (!scoreBoard) {
       return res.status(404).json({ message: 'Score board not found' });
     }
+    
+    // Check if password is provided in the headers
+    const providedPassword = req.headers['x-password'];
+    if (!providedPassword) {
+      // Return only public info if no password provided
+      return res.json({
+        syncId: scoreBoard.syncId,
+        lastUpdated: scoreBoard.lastUpdated,
+        protected: true
+      });
+    }
+    
+    // Verify password
+    const passwordMatch = await bcrypt.compare(providedPassword, scoreBoard.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ message: 'Invalid password' });
+    }
+    
+    // Password verified, return full data
     res.json(scoreBoard);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -106,22 +161,58 @@ app.get('/api/scoreboard/:syncId', async (req, res) => {
 // Create or update score board
 app.post('/api/scoreboard', async (req, res) => {
   try {
-    const { syncId, currentScore, reasons, history } = req.body;
+    const { syncId, password, currentScore, reasons, history } = req.body;
     
-    // Find and update or create new
-    const result = await ScoreBoard.findOneAndUpdate(
-      { syncId },
-      { 
+    // Check if this is an update or a new board
+    const existingBoard = await ScoreBoard.findOne({ syncId });
+    
+    if (existingBoard) {
+      // This is an update - verify password
+      const providedPassword = req.headers['x-password'];
+      if (!providedPassword) {
+        return res.status(401).json({ message: 'Password required for updates' });
+      }
+      
+      const passwordMatch = await bcrypt.compare(providedPassword, existingBoard.password);
+      if (!passwordMatch) {
+        return res.status(401).json({ message: 'Invalid password' });
+      }
+      
+      // Password verified, update the board
+      const result = await ScoreBoard.findOneAndUpdate(
+        { syncId },
+        { 
+          syncId,
+          currentScore,
+          reasons,
+          history,
+          lastUpdated: Date.now()
+        },
+        { new: true }
+      );
+      
+      res.status(200).json(result);
+    } else {
+      // This is a new board creation - hash the password
+      if (!password) {
+        return res.status(400).json({ message: 'Password is required for new boards' });
+      }
+      
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      // Create new board
+      const newBoard = new ScoreBoard({
         syncId,
+        password: hashedPassword,
         currentScore,
         reasons,
         history,
         lastUpdated: Date.now()
-      },
-      { new: true, upsert: true }
-    );
-    
-    res.status(201).json(result);
+      });
+      
+      const result = await newBoard.save();
+      res.status(201).json(result);
+    }
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -130,11 +221,26 @@ app.post('/api/scoreboard', async (req, res) => {
 // Delete score board
 app.delete('/api/scoreboard/:syncId', async (req, res) => {
   try {
-    const result = await ScoreBoard.deleteOne({ syncId: req.params.syncId });
-    if (result.deletedCount === 0) {
+    // Find the board first to verify password
+    const scoreBoard = await ScoreBoard.findOne({ syncId: req.params.syncId });
+    if (!scoreBoard) {
       return res.status(404).json({ message: 'Score board not found' });
     }
-    res.json({ message: 'Score board deleted' });
+    
+    // Verify password
+    const providedPassword = req.headers['x-password'];
+    if (!providedPassword) {
+      return res.status(401).json({ message: 'Password required for deletion' });
+    }
+    
+    const passwordMatch = await bcrypt.compare(providedPassword, scoreBoard.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ message: 'Invalid password' });
+    }
+    
+    // Password verified, delete the board
+    const result = await ScoreBoard.deleteOne({ syncId: req.params.syncId });
+    res.json({ message: 'Score board deleted successfully' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

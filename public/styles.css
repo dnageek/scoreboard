@@ -24,6 +24,97 @@ body {
     color: var(--dark-color);
 }
 
+/* Page Layout */
+.page {
+    display: none;
+}
+
+.page.active {
+    display: block;
+}
+
+/* Login Page */
+.login-options {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+}
+
+.login-card {
+    background-color: white;
+    padding: 20px;
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow);
+    flex: 1;
+    min-width: 300px;
+}
+
+.login-card h2 {
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.login-card .input-group {
+    flex-direction: column;
+    margin-bottom: 15px;
+}
+
+.login-card label {
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.login-card .btn {
+    width: 100%;
+    margin-top: 10px;
+}
+
+.existing-boards {
+    background-color: white;
+    padding: 20px;
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow);
+    margin-bottom: 30px;
+}
+
+.board-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.board-item {
+    background-color: var(--light-color);
+    padding: 10px 15px;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 1px solid #ddd;
+}
+
+.board-item:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--box-shadow);
+    border-color: var(--primary-color);
+}
+
+.board-item .board-id {
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.board-item .last-updated {
+    font-size: 0.8rem;
+    color: #666;
+}
+
+.loading {
+    color: #666;
+    font-style: italic;
+}
+
 .container {
     max-width: 800px;
     margin: 0 auto;
@@ -289,6 +380,19 @@ table tr:hover {
     color: white;
 }
 
+/* Page header */
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.page-actions {
+    display: flex;
+    gap: 10px;
+}
+
 /* Modal */
 .modal {
     display: none;
@@ -311,7 +415,7 @@ table tr:hover {
     max-width: 500px;
 }
 
-.close {
+.close, .close-delete {
     color: #aaa;
     float: right;
     font-size: 28px;
@@ -319,8 +423,15 @@ table tr:hover {
     cursor: pointer;
 }
 
-.close:hover {
+.close:hover, .close-delete:hover {
     color: var(--dark-color);
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
 }
 
 /* Responsive */

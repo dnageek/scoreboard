@@ -1,4 +1,21 @@
-// DOM Elements
+// DOM Elements - Login Page
+const loginPage = document.getElementById('login-page');
+const scoreBoardPage = document.getElementById('scoreboard-page');
+const newBoardId = document.getElementById('new-board-id');
+const newBoardPassword = document.getElementById('new-board-password');
+const createBoardBtn = document.getElementById('create-board-btn');
+const existingBoardId = document.getElementById('existing-board-id');
+const existingBoardPassword = document.getElementById('existing-board-password');
+const accessBoardBtn = document.getElementById('access-board-btn');
+const boardList = document.getElementById('board-list');
+const logoutBtn = document.getElementById('logout-btn');
+const deleteBoardBtn = document.getElementById('delete-board-btn');
+const deleteConfirmModal = document.getElementById('delete-confirm-modal');
+const confirmDeleteBtn = document.getElementById('confirm-delete');
+const cancelDeleteBtn = document.getElementById('cancel-delete');
+const closeDeleteBtn = document.querySelector('.close-delete');
+
+// DOM Elements - Score Board
 const currentScoreElement = document.getElementById('current-score');
 const addScoreButton = document.getElementById('add-score');
 const minusScoreButton = document.getElementById('minus-score');
@@ -24,6 +41,7 @@ let history = [];
 let selectedReason = null;
 let editingReasonId = null;
 let syncId = null;
+let password = null;
 let isSyncing = false;
 let offlineMode = false;
 const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
@@ -32,21 +50,251 @@ const API_URL = window.location.hostname === 'localhost' || window.location.host
 
 // Initialize the app
 function init() {
-    // Generate or retrieve syncId
+    // Check if we have a stored syncId and password
     syncId = sessionStorage.getItem('scoreBoardSyncId');
-    if (!syncId) {
-        syncId = generateSyncId();
-        sessionStorage.setItem('scoreBoardSyncId', syncId);
+    password = sessionStorage.getItem('scoreBoardPassword');
+    
+    if (syncId && password) {
+        // Try to load the board
+        loadBoardWithCredentials(syncId, password);
+    } else {
+        // Show login page and load available boards
+        showLoginPage();
+        loadAvailableBoards();
+    }
+}
+
+// Show the login page
+function showLoginPage() {
+    loginPage.classList.add('active');
+    scoreBoardPage.classList.remove('active');
+}
+
+// Show the score board page
+function showScoreBoardPage() {
+    loginPage.classList.remove('active');
+    scoreBoardPage.classList.add('active');
+    
+    // Display the sync ID
+    document.getElementById('sync-id').textContent = syncId;
+}
+
+// Load available boards from server
+async function loadAvailableBoards() {
+    try {
+        const response = await fetch(`${API_URL}/scoreboards`);
+        
+        if (response.ok) {
+            const boards = await response.json();
+            renderBoardList(boards);
+        } else {
+            boardList.innerHTML = '<p>Error loading boards. Please try again later.</p>';
+        }
+    } catch (err) {
+        boardList.innerHTML = '<p>Error connecting to server. Please try again later.</p>';
+    }
+}
+
+// Render the list of available boards
+function renderBoardList(boards) {
+    if (boards.length === 0) {
+        boardList.innerHTML = '<p>No boards available. Create your first board!</p>';
+        return;
     }
     
-    // Display the sync ID to the user
-    document.getElementById('sync-id').textContent = syncId;
+    boardList.innerHTML = '';
     
-    // Check if the server is available and load data
-    checkServerAvailability();
+    boards.forEach(board => {
+        const boardItem = document.createElement('div');
+        boardItem.className = 'board-item';
+        
+        // Format the date
+        const lastUpdated = new Date(board.lastUpdated);
+        const formattedDate = `${lastUpdated.toLocaleDateString()} ${lastUpdated.toLocaleTimeString()}`;
+        
+        boardItem.innerHTML = `
+            <div class="board-id">${board.syncId}</div>
+            <div class="last-updated">Last updated: ${formattedDate}</div>
+        `;
+        
+        // Click to fill in the board ID in the login form
+        boardItem.addEventListener('click', () => {
+            existingBoardId.value = board.syncId;
+            existingBoardPassword.focus();
+        });
+        
+        boardList.appendChild(boardItem);
+    });
+}
+
+// Create a new board
+async function createNewBoard() {
+    const newId = newBoardId.value.trim();
+    const newPass = newBoardPassword.value.trim();
     
-    // Set up sync interval (every 30 seconds)
-    setInterval(syncWithServer, 30000);
+    if (!newId || !newPass) {
+        alert('Please enter both a board ID and password');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_URL}/scoreboard`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                syncId: newId,
+                password: newPass,
+                currentScore: 0,
+                reasons: [],
+                history: []
+            })
+        });
+        
+        if (response.ok) {
+            // Save credentials and show board
+            syncId = newId;
+            password = newPass;
+            sessionStorage.setItem('scoreBoardSyncId', syncId);
+            sessionStorage.setItem('scoreBoardPassword', password);
+            
+            // Reset data
+            currentScore = 0;
+            reasons = [];
+            history = [];
+            
+            // Update UI
+            renderReasonCards();
+            renderHistory();
+            updateScoreDisplay();
+            showScoreBoardPage();
+        } else {
+            const errorData = await response.json();
+            alert(`Error creating board: ${errorData.message}`);
+        }
+    } catch (err) {
+        alert(`Error creating board: ${err.message}`);
+    }
+}
+
+// Access an existing board
+async function accessExistingBoard() {
+    const boardId = existingBoardId.value.trim();
+    const boardPass = existingBoardPassword.value.trim();
+    
+    if (!boardId || !boardPass) {
+        alert('Please enter both a board ID and password');
+        return;
+    }
+    
+    loadBoardWithCredentials(boardId, boardPass);
+}
+
+// Load a board with the given credentials
+async function loadBoardWithCredentials(boardId, boardPass) {
+    try {
+        // First verify the password
+        const verifyResponse = await fetch(`${API_URL}/scoreboard/verify`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                syncId: boardId,
+                password: boardPass
+            })
+        });
+        
+        if (!verifyResponse.ok) {
+            alert('Invalid board ID or password');
+            // Clear session storage on failed login
+            sessionStorage.removeItem('scoreBoardSyncId');
+            sessionStorage.removeItem('scoreBoardPassword');
+            showLoginPage();
+            return;
+        }
+        
+        // Password verified, now load the data
+        const dataResponse = await fetch(`${API_URL}/scoreboard/${boardId}`, {
+            headers: {
+                'X-Password': boardPass
+            }
+        });
+        
+        if (dataResponse.ok) {
+            const data = await dataResponse.json();
+            
+            // Save credentials
+            syncId = boardId;
+            password = boardPass;
+            sessionStorage.setItem('scoreBoardSyncId', syncId);
+            sessionStorage.setItem('scoreBoardPassword', password);
+            
+            // Update data
+            currentScore = data.currentScore;
+            reasons = data.reasons;
+            history = data.history;
+            
+            // Update UI
+            renderReasonCards();
+            renderHistory();
+            updateScoreDisplay();
+            showScoreBoardPage();
+        } else {
+            const errorData = await dataResponse.json();
+            alert(`Error loading board: ${errorData.message}`);
+        }
+    } catch (err) {
+        alert(`Error loading board: ${err.message}`);
+    }
+}
+
+// Logout from the current board
+function logout() {
+    // Clear credentials
+    syncId = null;
+    password = null;
+    sessionStorage.removeItem('scoreBoardSyncId');
+    sessionStorage.removeItem('scoreBoardPassword');
+    
+    // Show login page and refresh board list
+    showLoginPage();
+    loadAvailableBoards();
+}
+
+// Show delete confirmation modal
+function showDeleteConfirmation() {
+    deleteConfirmModal.style.display = 'block';
+}
+
+// Close delete confirmation modal
+function closeDeleteConfirmation() {
+    deleteConfirmModal.style.display = 'none';
+}
+
+// Delete the current board
+async function deleteBoard() {
+    try {
+        const response = await fetch(`${API_URL}/scoreboard/${syncId}`, {
+            method: 'DELETE',
+            headers: {
+                'X-Password': password
+            }
+        });
+        
+        if (response.ok) {
+            alert('Board deleted successfully');
+            logout();
+        } else {
+            const errorData = await response.json();
+            alert(`Error deleting board: ${errorData.message}`);
+        }
+    } catch (err) {
+        alert(`Error deleting board: ${err.message}`);
+    } finally {
+        closeDeleteConfirmation();
+    }
 }
 
 // Check if server is available
@@ -65,13 +313,14 @@ async function checkServerAvailability() {
         if (response.ok) {
             offlineMode = false;
             toggleOfflineButton.innerHTML = '<i class="fas fa-wifi"></i> Go Offline';
-            loadFromServer(); // Load data from server
+            return true;
         }
     } catch (err) {
         offlineMode = true;
         toggleOfflineButton.innerHTML = '<i class="fas fa-wifi"></i> Go Online';
         updateSyncStatus('Server unavailable - cannot load your data');
     }
+    return false;
 }
 
 function generateSyncId() {
@@ -80,7 +329,7 @@ function generateSyncId() {
 
 // Server Sync Functions
 async function syncWithServer() {
-    if (isSyncing || !syncId || offlineMode) return;
+    if (isSyncing || !syncId || !password || offlineMode) return;
 
     try {
         isSyncing = true;
@@ -99,7 +348,8 @@ async function syncWithServer() {
                 const response = await fetch(`${API_URL}/scoreboard`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-Password': password
                     },
                     body: JSON.stringify({
                         syncId,
@@ -146,73 +396,10 @@ async function syncWithServer() {
     }
 }
 
-async function loadFromServer() {
-    if (!syncId || offlineMode) return;
-
-    try {
-        updateSyncStatus('Loading...');
-
-        // Add retry logic
-        let retries = 3;
-        let success = false;
-
-        while (retries > 0 && !success) {
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000);
-                
-                const response = await fetch(`${API_URL}/scoreboard/${syncId}`, {
-                    signal: controller.signal
-                });
-                
-                clearTimeout(timeoutId);
-
-                if (response.ok) {
-                    success = true;
-                    const data = await response.json();
-                    
-                    // Update data from server
-                    currentScore = data.currentScore;
-                    reasons = data.reasons;
-                    history = data.history;
-                    
-                    renderReasonCards();
-                    renderHistory();
-                    updateScoreDisplay();
-                    
-                    updateSyncStatus('Loaded from cloud');
-                    setTimeout(() => updateSyncStatus(''), 3000);
-                } else if (response.status === 404) {
-                    success = true;
-                    // No data on server yet, will be created on next sync
-                    updateSyncStatus('New scoreboard created');
-                    setTimeout(() => updateSyncStatus(''), 3000);
-                } else {
-                    const errorData = await response.json();
-                    throw new Error(errorData.message);
-                }
-            } catch (innerErr) {
-                retries--;
-                if (retries === 0) {
-                    throw innerErr;
-                }
-                // Wait 2 seconds before retrying
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            }
-        }
-    } catch (err) {
-        // If it's a network error, switch to offline mode
-        if (err.message.includes('Failed to fetch') || err.name === 'AbortError') {
-            offlineMode = true;
-            updateSyncStatus('Offline mode - cannot load your data');
-        } else {
-            updateSyncStatus(`Load error: ${err.message}`);
-        }
-    }
-}
-
 function updateSyncStatus(message) {
-    syncStatusElement.textContent = message;
+    if (syncStatusElement) {
+        syncStatusElement.textContent = message;
+    }
 }
 
 // Render Functions
@@ -456,7 +643,16 @@ function toggleOfflineMode() {
     }
 }
 
-// Event Listeners
+// Event Listeners - Login Page
+createBoardBtn.addEventListener('click', createNewBoard);
+accessBoardBtn.addEventListener('click', accessExistingBoard);
+logoutBtn.addEventListener('click', logout);
+deleteBoardBtn.addEventListener('click', showDeleteConfirmation);
+confirmDeleteBtn.addEventListener('click', deleteBoard);
+cancelDeleteBtn.addEventListener('click', closeDeleteConfirmation);
+closeDeleteBtn.addEventListener('click', closeDeleteConfirmation);
+
+// Event Listeners - Score Board
 addScoreButton.addEventListener('click', () => updateScore(true));
 minusScoreButton.addEventListener('click', () => updateScore(false));
 addReasonButton.addEventListener('click', addReason);
@@ -465,10 +661,13 @@ saveEditButton.addEventListener('click', saveEdit);
 resetScoreButton.addEventListener('click', resetScore);
 toggleOfflineButton.addEventListener('click', toggleOfflineMode);
 
-// Close modal if clicked outside
+// Close modals if clicked outside
 window.addEventListener('click', (e) => {
     if (e.target === editModal) {
         closeModal();
+    }
+    if (e.target === deleteConfirmModal) {
+        closeDeleteConfirmation();
     }
 });
 
