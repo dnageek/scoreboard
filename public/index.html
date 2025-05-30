@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal Score Board</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Score Board</h1>
+        
+        <div class="score-display">
+            <h2>Current Score: <span id="current-score">0</span></h2>
+            <div class="reset-score">
+                <input type="number" id="reset-score-value" placeholder="New score">
+                <button id="reset-score-btn" class="btn btn-warning btn-sm"><i class="fas fa-sync"></i> Reset</button>
+            </div>
+            <div class="sync-info">
+                <p>Sync ID: <span id="sync-id">-</span></p>
+                <div class="sync-controls">
+                    <button id="toggle-offline" class="btn btn-sm"><i class="fas fa-wifi"></i> Toggle Online</button>
+                </div>
+                <div id="sync-status"></div>
+            </div>
+        </div>
+        
+        <div class="score-controls">
+            <button id="add-score" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Add Score
+            </button>
+            <button id="minus-score" class="btn btn-danger">
+                <i class="fas fa-minus"></i> Subtract Score
+            </button>
+        </div>
+        
+        <div class="reason-section">
+            <h3>Select a Reason</h3>
+            <div id="reason-cards" class="reason-cards">
+                <!-- Reason cards will be dynamically added here -->
+            </div>
+            
+            <div class="new-reason">
+                <h3>Add New Reason</h3>
+                <div class="input-group">
+                    <input type="text" id="new-reason-text" placeholder="Enter reason">
+                    <input type="number" id="new-reason-score" placeholder="Score value">
+                    <button id="add-reason" class="btn btn-success">Add</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="history-section">
+            <h3>History</h3>
+            <div class="table-container">
+                <table id="history-table">
+                    <thead>
+                        <tr>
+                            <th>Date/Time</th>
+                            <th>Reason</th>
+                            <th>Score Change</th>
+                            <th>New Score</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- History entries will be dynamically added here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="edit-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Edit Reason Card</h3>
+            <div class="input-group">
+                <input type="text" id="edit-reason-text" placeholder="Enter reason">
+                <input type="number" id="edit-reason-score" placeholder="Score value">
+                <button id="save-edit" class="btn btn-success">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
