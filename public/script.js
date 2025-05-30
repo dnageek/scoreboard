@@ -44,24 +44,36 @@ let syncId = null;
 let password = null;
 let isSyncing = false;
 let offlineMode = false;
-const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? '/api'  // Use relative path when on same domain
-    : 'http://localhost:3000/api';  // Use absolute path for development
+// Always use relative path for API URL to work across devices
+const API_URL = '/api';
 
 // Initialize the app
 function init() {
-    // Check if we have a stored syncId and password
-    syncId = sessionStorage.getItem('scoreBoardSyncId');
-    password = sessionStorage.getItem('scoreBoardPassword');
-    
-    if (syncId && password) {
-        // Try to load the board
-        loadBoardWithCredentials(syncId, password);
-    } else {
-        // Show login page and load available boards
-        showLoginPage();
-        loadAvailableBoards();
-    }
+    // Set initial UI state
+    showLoginPage();
+
+    // Check server availability first
+    checkServerAvailability().then(serverAvailable => {
+        if (serverAvailable) {
+            // Check if we have a stored syncId and password
+            syncId = sessionStorage.getItem('scoreBoardSyncId');
+            password = sessionStorage.getItem('scoreBoardPassword');
+
+            if (syncId && password) {
+                // Try to load the board
+                loadBoardWithCredentials(syncId, password);
+            } else {
+                // Load available boards
+                loadAvailableBoards();
+            }
+        } else {
+            boardList.innerHTML = '<p>Cannot connect to server. Please check your connection and try again.</p>';
+        }
+    });
+
+    // Log debug info to help troubleshoot
+    console.log('App initialized, hostname:', window.location.hostname);
+    console.log('API URL:', API_URL);
 }
 
 // Show the login page
@@ -80,7 +92,7 @@ function showScoreBoardPage() {
 }
 
 // Load available boards from server
-async function loadAvailableBoards() {
+async async function loadAvailableBoards() {
     try {
         const response = await fetch(`${API_URL}/scoreboards`);
         
@@ -302,20 +314,26 @@ async function checkServerAvailability() {
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
-        
+
         const response = await fetch(`${API_URL}/scoreboard/test-connection`, {
             method: 'GET',
-            signal: controller.signal
+            signal: controller.signal,
+            // Prevent caching to ensure fresh response
+            headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+            }
         });
-        
+
         clearTimeout(timeoutId);
-        
+
         if (response.ok) {
             offlineMode = false;
             toggleOfflineButton.innerHTML = '<i class="fas fa-wifi"></i> Go Offline';
             return true;
         }
     } catch (err) {
+        console.error('Server connection error:', err);
         offlineMode = true;
         toggleOfflineButton.innerHTML = '<i class="fas fa-wifi"></i> Go Online';
         updateSyncStatus('Server unavailable - cannot load your data');

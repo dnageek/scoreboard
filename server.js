@@ -13,7 +13,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors());
+// Configure CORS to allow requests from any origin
+app.use(cors({
+  origin: '*',  // Allow all origins
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'X-Password']
+}));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
