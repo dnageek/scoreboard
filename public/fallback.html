@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Score Board - Fallback</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            background-color: #f4f7f9;
+            color: #333;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #166088;
+        }
+        
+        .info {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .manual-entry {
+            margin-top: 30px;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        button {
+            background-color: #4a6fa5;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        button:hover {
+            background-color: #3a5a80;
+        }
+        
+        .error {
+            color: #e74c3c;
+            margin-top: 10px;
+        }
+        
+        .success {
+            color: #2ecc71;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Score Board - Direct Access</h1>
+        
+        <div class="info">
+            <h2>Having Trouble Connecting?</h2>
+            <p>If you're experiencing issues with the main application, you can directly access your score board here.</p>
+            <p>Enter your board ID and password below to connect directly to the database.</p>
+        </div>
+        
+        <div class="manual-entry">
+            <h2>Access Your Board</h2>
+            <div class="input-group">
+                <label for="board-id">Board ID</label>
+                <input type="text" id="board-id" placeholder="Enter your board ID">
+            </div>
+            
+            <div class="input-group">
+                <label for="board-password">Password</label>
+                <input type="password" id="board-password" placeholder="Enter your password">
+            </div>
+            
+            <button id="access-btn">Access Board</button>
+            
+            <div id="result-message"></div>
+        </div>
+    </div>
+    
+    <script>
+        // Get DOM elements
+        const boardIdInput = document.getElementById('board-id');
+        const boardPasswordInput = document.getElementById('board-password');
+        const accessButton = document.getElementById('access-btn');
+        const resultMessage = document.getElementById('result-message');
+        
+        // API URL is always relative
+        const API_URL = '/api';
+        
+        // Access button click handler
+        accessButton.addEventListener('click', async () => {
+            const boardId = boardIdInput.value.trim();
+            const password = boardPasswordInput.value.trim();
+            
+            if (!boardId || !password) {
+                showError('Please enter both Board ID and Password');
+                return;
+            }
+            
+            try {
+                // First verify the credentials
+                const verifyResponse = await fetch(`${API_URL}/scoreboard/verify`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ syncId: boardId, password })
+                });
+                
+                if (!verifyResponse.ok) {
+                    showError('Invalid Board ID or Password');
+                    return;
+                }
+                
+                // Credentials verified, save to sessionStorage
+                sessionStorage.setItem('scoreBoardSyncId', boardId);
+                sessionStorage.setItem('scoreBoardPassword', password);
+                
+                // Show success message
+                showSuccess('Access granted! Redirecting to your board...');
+                
+                // Redirect to main application
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
+                
+            } catch (err) {
+                showError(`Error: ${err.message}`);
+            }
+        });
+        
+        // Show error message
+        function showError(message) {
+            resultMessage.className = 'error';
+            resultMessage.textContent = message;
+        }
+        
+        // Show success message
+        function showSuccess(message) {
+            resultMessage.className = 'success';
+            resultMessage.textContent = message;
+        }
+    </script>
+</body>
+</html>

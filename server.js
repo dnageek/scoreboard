@@ -92,15 +92,24 @@ const ScoreBoard = mongoose.model('ScoreBoard', ScoreBoardSchema);
 // API Routes
 // Simple endpoint to check if server is available
 app.get('/api/scoreboard/test-connection', (req, res) => {
+  // Set explicit CORS headers to ensure browsers accept the response
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+
   res.status(200).json({ status: 'ok', message: 'Server is available' });
 });
 
 // Get all available boards (without sensitive data)
 app.get('/api/scoreboards', async (req, res) => {
   try {
+    // Add artificial delay to prevent race conditions in the UI
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     const boards = await ScoreBoard.find({}, 'syncId lastUpdated');
     res.json(boards);
   } catch (err) {
+    console.error('Error fetching scoreboards:', err);
     res.status(500).json({ message: err.message });
   }
 });

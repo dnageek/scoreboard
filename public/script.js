@@ -92,9 +92,24 @@ function showScoreBoardPage() {
 }
 
 // Load available boards from server
-async async function loadAvailableBoards() {
+async function loadAvailableBoards() {
     try {
-        const response = await fetch(`${API_URL}/scoreboards`);
+        // Show loading message
+        boardList.innerHTML = '<p class="loading">Loading available boards...</p>';
+
+        // Add timeout to the fetch operation
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+        const response = await fetch(`${API_URL}/scoreboards`, {
+            signal: controller.signal,
+            headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+            }
+        });
+
+        clearTimeout(timeoutId);
         
         if (response.ok) {
             const boards = await response.json();
@@ -103,18 +118,31 @@ async async function loadAvailableBoards() {
             boardList.innerHTML = '<p>Error loading boards. Please try again later.</p>';
         }
     } catch (err) {
-        boardList.innerHTML = '<p>Error connecting to server. Please try again later.</p>';
+        console.error('Failed to load boards:', err);
+        if (err.name === 'AbortError') {
+            boardList.innerHTML = '<p>Request timed out. The server might be slow or unreachable.</p>';
+        } else {
+            boardList.innerHTML = `<p>Error connecting to server: ${err.message}</p>`;
+        }
+
+        // Add a retry button
+        const retryBtn = document.createElement('button');
+        retryBtn.className = 'btn btn-primary';
+        retryBtn.textContent = 'Retry';
+        retryBtn.addEventListener('click', loadAvailableBoards);
+        boardList.appendChild(retryBtn);
     }
 }
 
 // Render the list of available boards
 function renderBoardList(boards) {
-    if (boards.length === 0) {
+    if (!Array.isArray(boards) || boards.length === 0) {
         boardList.innerHTML = '<p>No boards available. Create your first board!</p>';
         return;
     }
-    
+
     boardList.innerHTML = '';
+    console.log(`Rendering ${boards.length} boards`);
     
     boards.forEach(board => {
         const boardItem = document.createElement('div');
