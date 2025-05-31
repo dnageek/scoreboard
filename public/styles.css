@@ -267,6 +267,18 @@ h1 {
     flex-wrap: wrap;
     gap: 15px;
     margin-bottom: 20px;
+    min-height: 100px; /* Ensure there's a place to drop items even when empty */
+}
+
+.drag-over {
+    background-color: rgba(74, 111, 165, 0.1);
+    border-radius: var(--border-radius);
+}
+
+.reason-card-placeholder {
+    background-color: rgba(200, 200, 200, 0.3);
+    border: 2px dashed var(--primary-color);
+    border-radius: var(--border-radius);
 }
 
 .reason-card {
@@ -277,6 +289,14 @@ h1 {
     width: calc(33.333% - 10px);
     transition: all 0.3s ease;
     position: relative;
+    cursor: grab;
+}
+
+.reason-card.dragging {
+    opacity: 0.8;
+    cursor: grabbing;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    z-index: 100;
 }
 
 .reason-card:hover {

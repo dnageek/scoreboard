@@ -64,6 +64,99 @@ function ensureReasonTypes() {
     });
 }
 
+// Drag and Drop functionality
+let draggedElement = null;
+
+function handleDragStart(e) {
+    draggedElement = this;
+    this.classList.add('dragging');
+
+    // Create a ghost image
+    const ghostElement = this.cloneNode(true);
+    ghostElement.style.position = 'absolute';
+    ghostElement.style.top = '-1000px';
+    document.body.appendChild(ghostElement);
+    e.dataTransfer.setDragImage(ghostElement, 0, 0);
+
+    // Clean up ghost element after dragstart
+    setTimeout(() => {
+        document.body.removeChild(ghostElement);
+    }, 0);
+
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', this.dataset.id);
+}
+
+function handleDragEnd() {
+    this.classList.remove('dragging');
+    draggedElement = null;
+    document.querySelectorAll('.reason-card').forEach(card => {
+        card.classList.remove('drag-over');
+    });
+    reasonCardsContainer.classList.remove('drag-over');
+}
+
+function handleDragOver(e) {
+    if (e.preventDefault) {
+        e.preventDefault(); // Allows the drop
+    }
+    e.dataTransfer.dropEffect = 'move';
+    return false;
+}
+
+function handleDragEnter(e) {
+    this.classList.add('drag-over');
+}
+
+function handleDragLeave(e) {
+    this.classList.remove('drag-over');
+}
+
+function handleDrop(e) {
+    e.stopPropagation();
+    e.preventDefault();
+
+    if (!draggedElement) return;
+
+    // Get the target container
+    const container = reasonCardsContainer;
+    container.classList.remove('drag-over');
+
+    // Get the dragged reason ID
+    const reasonId = draggedElement.dataset.id;
+    const dropTarget = e.target.closest('.reason-card');
+
+    if (reasonId) {
+        // Find the index of the dragged item and the drop target
+        const draggedIndex = reasons.findIndex(r => r.id === reasonId);
+
+        if (draggedIndex === -1) return;
+
+        let dropIndex;
+
+        if (dropTarget && dropTarget.dataset.id) {
+            // If dropped on another card
+            const dropTargetId = dropTarget.dataset.id;
+            dropIndex = reasons.findIndex(r => r.id === dropTargetId);
+
+            if (dropIndex === -1) return;
+        } else {
+            // If dropped directly on container (at the end)
+            dropIndex = reasons.length - 1;
+        }
+
+        // Reorder the reasons array
+        const [removed] = reasons.splice(draggedIndex, 1);
+        reasons.splice(dropIndex, 0, removed);
+
+        // Save and re-render
+        syncWithServer();
+        renderReasonCards();
+    }
+
+    return false;
+}
+
 // Initialize the app
 function init() {
     // Set initial UI state
@@ -72,6 +165,12 @@ function init() {
     // Check server availability first
     checkServerAvailability().then(serverAvailable => {
         if (serverAvailable) {
+            // Set up container drag and drop event listeners
+            reasonCardsContainer.addEventListener('dragover', handleDragOver);
+            reasonCardsContainer.addEventListener('dragenter', handleDragEnter);
+            reasonCardsContainer.addEventListener('dragleave', handleDragLeave);
+            reasonCardsContainer.addEventListener('drop', handleDrop);
+
             // Check if we have a stored syncId and password
             syncId = sessionStorage.getItem('scoreBoardSyncId');
             password = sessionStorage.getItem('scoreBoardPassword');
@@ -479,6 +578,7 @@ function renderReasonCards() {
         const card = document.createElement('div');
         card.className = `reason-card ${reason.type === REASON_TYPE.ADD ? 'add-card' : 'subtract-card'}`;
         card.dataset.id = reason.id;
+        card.draggable = true; // Make the card draggable
 
         // Determine what button to show based on the reason type
         let actionButton = '';
@@ -495,6 +595,10 @@ function renderReasonCards() {
                 <button class="edit-btn" data-id="${reason.id}"><i class="fas fa-edit"></i></button>
             </div>
         `;
+
+        // Add drag event listeners
+        card.addEventListener('dragstart', handleDragStart);
+        card.addEventListener('dragend', handleDragEnd);
 
         reasonCardsContainer.appendChild(card);
     });
@@ -521,6 +625,13 @@ function renderReasonCards() {
             e.stopPropagation();
             const reasonId = button.dataset.id;
             openEditModal(reasonId);
+        });
+    });
+
+    // Prevent button clicks from starting drag operations
+    document.querySelectorAll('.action-btn, .edit-btn').forEach(button => {
+        button.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
         });
     });
 }
