@@ -52,7 +52,12 @@ connectDB();
 const ReasonSchema = new mongoose.Schema({
   id: String,
   text: String,
-  score: Number
+  score: Number,
+  type: {
+    type: String,
+    enum: ['add', 'subtract'],
+    default: 'add'
+  }
 });
 
 const HistoryEntrySchema = new mongoose.Schema({
