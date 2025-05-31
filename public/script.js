@@ -32,7 +32,6 @@ const saveEditButton = document.getElementById('save-edit');
 const syncStatusElement = document.getElementById('sync-status');
 const resetScoreValue = document.getElementById('reset-score-value');
 const resetScoreButton = document.getElementById('reset-score-btn');
-const toggleOfflineButton = document.getElementById('toggle-offline');
 
 // App State
 let currentScore = 0;
@@ -378,13 +377,11 @@ async function checkServerAvailability() {
 
         if (response.ok) {
             offlineMode = false;
-            toggleOfflineButton.innerHTML = '<i class="fas fa-wifi"></i> Go Offline';
             return true;
         }
     } catch (err) {
         console.error('Server connection error:', err);
         offlineMode = true;
-        toggleOfflineButton.innerHTML = '<i class="fas fa-wifi"></i> Go Online';
         updateSyncStatus('Server unavailable - cannot load your data');
     }
     return false;
@@ -756,20 +753,6 @@ function resetScore() {
     resetScoreValue.value = '';
 }
 
-// Toggle offline mode
-function toggleOfflineMode() {
-    offlineMode = !offlineMode;
-    
-    if (offlineMode) {
-        updateSyncStatus('Offline mode enabled - changes will not be saved');
-        toggleOfflineButton.innerHTML = '<i class="fas fa-wifi"></i> Go Online';
-    } else {
-        updateSyncStatus('Online mode enabled - syncing with server');
-        toggleOfflineButton.innerHTML = '<i class="fas fa-wifi"></i> Go Offline';
-        // Trigger immediate sync
-        syncWithServer();
-    }
-}
 
 // Event Listeners - Login Page
 createBoardBtn.addEventListener('click', createNewBoard);
@@ -788,7 +771,6 @@ addReasonButton.addEventListener('click', addReason);
 closeModalButton.addEventListener('click', closeModal);
 saveEditButton.addEventListener('click', saveEdit);
 resetScoreButton.addEventListener('click', resetScore);
-toggleOfflineButton.addEventListener('click', toggleOfflineMode);
 
 // Close modals if clicked outside
 window.addEventListener('click', (e) => {
