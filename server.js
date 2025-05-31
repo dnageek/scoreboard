@@ -95,6 +95,40 @@ const ScoreBoardSchema = new mongoose.Schema({
 const ScoreBoard = mongoose.model('ScoreBoard', ScoreBoardSchema);
 
 // API Routes
+// Change password for a board
+app.put('/api/scoreboard/:syncId/password', async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const { syncId } = req.params;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current and new password are required' });
+    }
+
+    // Find the board
+    const scoreBoard = await ScoreBoard.findOne({ syncId });
+    if (!scoreBoard) {
+      return res.status(404).json({ message: 'Score board not found' });
+    }
+
+    // Verify the current password
+    const passwordMatch = await bcrypt.compare(currentPassword, scoreBoard.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ message: 'Current password is incorrect' });
+    }
+
+    // Hash the new password and update
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    scoreBoard.password = hashedPassword;
+    await scoreBoard.save();
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    console.error('Error updating password:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Simple endpoint to check if server is available
 app.get('/api/scoreboard/test-connection', (req, res) => {
   // Set explicit CORS headers to ensure browsers accept the response

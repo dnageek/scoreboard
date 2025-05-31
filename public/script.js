@@ -14,6 +14,14 @@ const deleteConfirmModal = document.getElementById('delete-confirm-modal');
 const confirmDeleteBtn = document.getElementById('confirm-delete');
 const cancelDeleteBtn = document.getElementById('cancel-delete');
 const closeDeleteBtn = document.querySelector('.close-delete');
+const changePasswordBtn = document.getElementById('change-password-btn');
+const changePasswordModal = document.getElementById('change-password-modal');
+const currentPasswordInput = document.getElementById('current-password');
+const newPasswordInput = document.getElementById('new-password');
+const confirmPasswordInput = document.getElementById('confirm-password');
+const confirmChangePasswordBtn = document.getElementById('confirm-change-password');
+const cancelChangePasswordBtn = document.getElementById('cancel-change-password');
+const closePasswordBtn = document.querySelector('.close-password');
 
 // DOM Elements - Score Board
 const currentScoreElement = document.getElementById('current-score');
@@ -873,6 +881,10 @@ deleteBoardBtn.addEventListener('click', showDeleteConfirmation);
 confirmDeleteBtn.addEventListener('click', deleteBoard);
 cancelDeleteBtn.addEventListener('click', closeDeleteConfirmation);
 closeDeleteBtn.addEventListener('click', closeDeleteConfirmation);
+changePasswordBtn.addEventListener('click', showChangePasswordModal);
+confirmChangePasswordBtn.addEventListener('click', changePassword);
+cancelChangePasswordBtn.addEventListener('click', closeChangePasswordModal);
+closePasswordBtn.addEventListener('click', closeChangePasswordModal);
 
 // Event Listeners - Score Board
 // Remove the old score button listeners as they're no longer needed
@@ -883,6 +895,71 @@ closeModalButton.addEventListener('click', closeModal);
 saveEditButton.addEventListener('click', saveEdit);
 resetScoreButton.addEventListener('click', resetScore);
 
+// Show change password modal
+function showChangePasswordModal() {
+    // Reset form fields
+    currentPasswordInput.value = '';
+    newPasswordInput.value = '';
+    confirmPasswordInput.value = '';
+
+    // Show the modal
+    changePasswordModal.style.display = 'block';
+}
+
+// Close change password modal
+function closeChangePasswordModal() {
+    changePasswordModal.style.display = 'none';
+}
+
+// Change the board password
+async function changePassword() {
+    const currentPassword = currentPasswordInput.value.trim();
+    const newPassword = newPasswordInput.value.trim();
+    const confirmPassword = confirmPasswordInput.value.trim();
+
+    // Basic validation
+    if (!currentPassword || !newPassword || !confirmPassword) {
+        alert('Please fill in all password fields');
+        return;
+    }
+
+    if (newPassword !== confirmPassword) {
+        alert('New password and confirmation do not match');
+        return;
+    }
+
+    try {
+        updateSyncStatus('Changing password...');
+
+        const response = await fetch(`${API_URL}/scoreboard/${syncId}/password`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                currentPassword,
+                newPassword
+            })
+        });
+
+        if (response.ok) {
+            // Update stored password
+            password = newPassword;
+            sessionStorage.setItem('scoreBoardPassword', password);
+
+            alert('Password changed successfully');
+            closeChangePasswordModal();
+            updateSyncStatus('Password updated');
+            setTimeout(() => updateSyncStatus(''), 3000);
+        } else {
+            const errorData = await response.json();
+            alert(`Error: ${errorData.message}`);
+        }
+    } catch (err) {
+        alert(`Error changing password: ${err.message}`);
+    }
+}
+
 // Close modals if clicked outside
 window.addEventListener('click', (e) => {
     if (e.target === editModal) {
@@ -890,6 +967,9 @@ window.addEventListener('click', (e) => {
     }
     if (e.target === deleteConfirmModal) {
         closeDeleteConfirmation();
+    }
+    if (e.target === changePasswordModal) {
+        closeChangePasswordModal();
     }
 });
 

@@ -54,6 +54,7 @@
             <div class="page-header">
                 <h1>Score Board</h1>
                 <div class="page-actions">
+                    <button id="change-password-btn" class="btn btn-sm"><i class="fas fa-key"></i> Change Password</button>
                     <button id="logout-btn" class="btn btn-sm"><i class="fas fa-sign-out-alt"></i> Logout</button>
                     <button id="delete-board-btn" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i> Delete Board</button>
                 </div>
@@ -70,7 +71,6 @@
                     <div id="sync-status"></div>
                 </div>
             </div>
-            
             
             <div class="reason-section">
                 <h3>Score Reasons</h3>
@@ -140,6 +140,29 @@
             <div class="modal-actions">
                 <button id="confirm-delete" class="btn btn-danger">Delete</button>
                 <button id="cancel-delete" class="btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="change-password-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-password">&times;</span>
+            <h3>Change Password</h3>
+            <div class="input-group">
+                <label for="current-password">Current Password</label>
+                <input type="password" id="current-password" placeholder="Enter current password">
+            </div>
+            <div class="input-group">
+                <label for="new-password">New Password</label>
+                <input type="password" id="new-password" placeholder="Enter new password">
+            </div>
+            <div class="input-group">
+                <label for="confirm-password">Confirm New Password</label>
+                <input type="password" id="confirm-password" placeholder="Confirm new password">
+            </div>
+            <div class="modal-actions">
+                <button id="confirm-change-password" class="btn btn-primary">Change Password</button>
+                <button id="cancel-change-password" class="btn">Cancel</button>
             </div>
         </div>
     </div>
