@@ -260,6 +260,11 @@ app.delete('/api/scoreboard/:syncId', async (req, res) => {
   }
 });
 
+// Serve static files in development mode directly from the root directory
+if (process.env.NODE_ENV !== 'production') {
+  app.use(express.static(path.join(__dirname)));
+}
+
 // Serve the main HTML file for any other route
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

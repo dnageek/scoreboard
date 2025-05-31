@@ -47,6 +47,24 @@ let offlineMode = false;
 // Always use relative path for API URL to work across devices
 const API_URL = '/api';
 
+// Constants for reason types
+const REASON_TYPE = {
+    ADD: 'add',
+    SUBTRACT: 'subtract'
+};
+
+// Fix for older data without type property
+function ensureReasonTypes() {
+    reasons.forEach(reason => {
+        if (!reason.hasOwnProperty('type')) {
+            // For backward compatibility, determine type based on score
+            reason.type = reason.score < 0 ? REASON_TYPE.SUBTRACT : REASON_TYPE.ADD;
+            // Make sure score is positive
+            reason.score = Math.abs(reason.score);
+        }
+    });
+}
+
 // Initialize the app
 function init() {
     // Set initial UI state
@@ -275,6 +293,9 @@ async function loadBoardWithCredentials(boardId, boardPass) {
             currentScore = data.currentScore;
             reasons = data.reasons;
             history = data.history;
+
+            // Ensure all reasons have a type
+            ensureReasonTypes();
             
             // Update UI
             renderReasonCards();
@@ -451,30 +472,59 @@ function updateSyncStatus(message) {
 // Render Functions
 function renderReasonCards() {
     reasonCardsContainer.innerHTML = '';
-    
+
     if (reasons.length === 0) {
         reasonCardsContainer.innerHTML = '<p>No reasons added yet. Add your first reason below!</p>';
         return;
     }
-    
+
     reasons.forEach(reason => {
         const card = document.createElement('div');
-        card.className = `reason-card ${selectedReason === reason.id ? 'selected' : ''}`;
+        card.className = `reason-card ${reason.type === REASON_TYPE.ADD ? 'add-card' : 'subtract-card'}`;
         card.dataset.id = reason.id;
-        
+
+        // Determine what button to show based on the reason type
+        let actionButton = '';
+        if (reason.type === REASON_TYPE.ADD) {
+            actionButton = `<button class="action-btn add-btn" data-id="${reason.id}"><i class="fas fa-plus"></i> Add ${reason.score}</button>`;
+        } else if (reason.type === REASON_TYPE.SUBTRACT) {
+            actionButton = `<button class="action-btn subtract-btn" data-id="${reason.id}"><i class="fas fa-minus"></i> Subtract ${reason.score}</button>`;
+        }
+
         card.innerHTML = `
             <p>${reason.text}</p>
-            <p class="score-value">${reason.score > 0 ? '+' : ''}${reason.score}</p>
-            <button class="edit-btn"><i class="fas fa-edit"></i></button>
+            <div class="card-actions">
+                ${actionButton}
+                <button class="edit-btn" data-id="${reason.id}"><i class="fas fa-edit"></i></button>
+            </div>
         `;
-        
-        card.addEventListener('click', () => selectReason(reason.id));
-        card.querySelector('.edit-btn').addEventListener('click', (e) => {
-            e.stopPropagation();
-            openEditModal(reason.id);
-        });
-        
+
         reasonCardsContainer.appendChild(card);
+    });
+
+    // Add event listeners to the action buttons
+    document.querySelectorAll('.add-btn').forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const reasonId = button.dataset.id;
+            updateScoreByReasonId(reasonId, true);
+        });
+    });
+
+    document.querySelectorAll('.subtract-btn').forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const reasonId = button.dataset.id;
+            updateScoreByReasonId(reasonId, false);
+        });
+    });
+
+    document.querySelectorAll('.edit-btn').forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const reasonId = button.dataset.id;
+            openEditModal(reasonId);
+        });
     });
 }
 
@@ -527,42 +577,65 @@ function selectReason(id) {
 function addReason() {
     const text = newReasonText.value.trim();
     const score = parseInt(newReasonScore.value);
-    
-    if (!text || isNaN(score)) {
-        alert('Please enter both a reason and a valid score');
+    const type = document.getElementById('new-reason-type').value;
+
+    if (!text || isNaN(score) || score <= 0) {
+        alert('Please enter a reason and a positive score value');
         return;
     }
-    
+
+    // Validate type is one of the allowed values
+    if (type !== REASON_TYPE.ADD && type !== REASON_TYPE.SUBTRACT) {
+        alert('Invalid reason type');
+        return;
+    }
+
     const newReason = {
         id: Date.now().toString(),
         text,
-        score
+        score,  // Store positive value
+        type    // Store the explicitly selected type
     };
-    
+
     reasons.push(newReason);
     syncWithServer();
     renderReasonCards();
-    
+
     // Clear inputs
     newReasonText.value = '';
     newReasonScore.value = '';
-    
+
     // Auto-select the newly added reason
     selectReason(newReason.id);
 }
 
-function updateScore(isAddition) {
-    if (!selectedReason) {
-        alert('Please select a reason first');
+// This function is no longer needed as we're now using updateScoreByReasonId
+// function updateScore(isAddition) { ... }
+
+// New function to update score by reason ID
+function updateScoreByReasonId(reasonId, isAddition) {
+    const reason = reasons.find(r => r.id === reasonId);
+    if (!reason) return;
+
+    // Apply score change based on reason type
+    let scoreChange;
+
+    // Add points (only if it's an add-type reason and we're adding)
+    if (reason.type === REASON_TYPE.ADD && isAddition) {
+        scoreChange = reason.score;
+    }
+    // Subtract points (only if it's a subtract-type reason and we're subtracting)
+    else if (reason.type === REASON_TYPE.SUBTRACT && !isAddition) {
+        scoreChange = -reason.score;
+    }
+    // Otherwise, invalid operation
+    else {
+        console.error('Invalid operation for reason type');
         return;
     }
-    
-    const reason = reasons.find(r => r.id === selectedReason);
-    if (!reason) return;
-    
-    const scoreChange = isAddition ? reason.score : -reason.score;
+
     currentScore += scoreChange;
-    
+
     // Add to history with unique ID
     history.push({
         id: Date.now().toString(),
@@ -572,7 +645,7 @@ function updateScore(isAddition) {
         newScore: currentScore,
         reasonId: reason.id
     });
-    
+
     syncWithServer();
     updateScoreDisplay();
     renderHistory();
@@ -581,10 +654,11 @@ function updateScore(isAddition) {
 function openEditModal(reasonId) {
     const reason = reasons.find(r => r.id === reasonId);
     if (!reason) return;
-    
+
     editingReasonId = reasonId;
     editReasonText.value = reason.text;
     editReasonScore.value = reason.score;
+    document.getElementById('edit-reason-type').value = reason.type;
     editModal.style.display = 'block';
 }
 
@@ -595,24 +669,32 @@ function closeModal() {
 
 function saveEdit() {
     if (!editingReasonId) return;
-    
+
     const text = editReasonText.value.trim();
     const score = parseInt(editReasonScore.value);
-    
-    if (!text || isNaN(score)) {
-        alert('Please enter both a reason and a valid score');
+    const type = document.getElementById('edit-reason-type').value;
+
+    if (!text || isNaN(score) || score <= 0) {
+        alert('Please enter a reason and a positive score value');
         return;
     }
-    
+
+    // Validate type is one of the allowed values
+    if (type !== REASON_TYPE.ADD && type !== REASON_TYPE.SUBTRACT) {
+        alert('Invalid reason type');
+        return;
+    }
+
     const reasonIndex = reasons.findIndex(r => r.id === editingReasonId);
     if (reasonIndex === -1) return;
-    
+
     reasons[reasonIndex] = {
         ...reasons[reasonIndex],
         text,
-        score
+        score,  // Store positive value
+        type    // Store the explicitly selected type
     };
-    
+
     syncWithServer();
     renderReasonCards();
     closeModal();
@@ -699,8 +781,9 @@ cancelDeleteBtn.addEventListener('click', closeDeleteConfirmation);
 closeDeleteBtn.addEventListener('click', closeDeleteConfirmation);
 
 // Event Listeners - Score Board
-addScoreButton.addEventListener('click', () => updateScore(true));
-minusScoreButton.addEventListener('click', () => updateScore(false));
+// Remove the old score button listeners as they're no longer needed
+// addScoreButton.addEventListener('click', () => updateScore(true));
+// minusScoreButton.addEventListener('click', () => updateScore(false));
 addReasonButton.addEventListener('click', addReason);
 closeModalButton.addEventListener('click', closeModal);
 saveEditButton.addEventListener('click', saveEdit);

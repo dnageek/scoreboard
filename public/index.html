@@ -74,17 +74,9 @@
                 </div>
             </div>
             
-            <div class="score-controls">
-                <button id="add-score" class="btn btn-primary">
-                    <i class="fas fa-plus"></i> Add Score
-                </button>
-                <button id="minus-score" class="btn btn-danger">
-                    <i class="fas fa-minus"></i> Subtract Score
-                </button>
-            </div>
             
             <div class="reason-section">
-                <h3>Select a Reason</h3>
+                <h3>Score Reasons</h3>
                 <div id="reason-cards" class="reason-cards">
                     <!-- Reason cards will be dynamically added here -->
                 </div>
@@ -94,6 +86,10 @@
                     <div class="input-group">
                         <input type="text" id="new-reason-text" placeholder="Enter reason">
                         <input type="number" id="new-reason-score" placeholder="Score value">
+                        <select id="new-reason-type">
+                            <option value="add">Add Points</option>
+                            <option value="subtract">Subtract Points</option>
+                        </select>
                         <button id="add-reason" class="btn btn-success">Add</button>
                     </div>
                 </div>
@@ -129,6 +125,10 @@
             <div class="input-group">
                 <input type="text" id="edit-reason-text" placeholder="Enter reason">
                 <input type="number" id="edit-reason-score" placeholder="Score value">
+                <select id="edit-reason-type">
+                    <option value="add">Add Points</option>
+                    <option value="subtract">Subtract Points</option>
+                </select>
                 <button id="save-edit" class="btn btn-success">Save</button>
             </div>
         </div>
