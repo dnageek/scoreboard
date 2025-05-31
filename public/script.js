@@ -432,6 +432,8 @@ function logout() {
 
 // Show delete confirmation modal
 function showDeleteConfirmation() {
+    // Reset password field
+    document.getElementById('delete-password').value = '';
     deleteConfirmModal.style.display = 'block';
 }
 
@@ -442,14 +444,39 @@ function closeDeleteConfirmation() {
 
 // Delete the current board
 async function deleteBoard() {
+    const deletePassword = document.getElementById('delete-password').value.trim();
+
+    if (!deletePassword) {
+        alert('Please enter your password to confirm deletion');
+        return;
+    }
+
     try {
+        // First verify the password
+        const verifyResponse = await fetch(`${API_URL}/scoreboard/verify`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                syncId,
+                password: deletePassword
+            })
+        });
+
+        if (!verifyResponse.ok) {
+            alert('Incorrect password');
+            return;
+        }
+
+        // Password verified, proceed with deletion
         const response = await fetch(`${API_URL}/scoreboard/${syncId}`, {
             method: 'DELETE',
             headers: {
-                'X-Password': password
+                'X-Password': deletePassword
             }
         });
-        
+
         if (response.ok) {
             alert('Board deleted successfully');
             logout();
