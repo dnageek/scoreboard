@@ -6,6 +6,7 @@
     <title>Personal Score Board</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="js-cookie.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -35,6 +36,10 @@
                     <div class="input-group">
                         <label for="existing-board-password">Password</label>
                         <input type="password" id="existing-board-password" placeholder="Enter password">
+                    </div>
+                    <div class="remember-me">
+                        <input type="checkbox" id="remember-login" checked>
+                        <label for="remember-login">Keep me signed in</label>
                     </div>
                     <button id="access-board-btn" class="btn btn-primary">Access Board</button>
                 </div>

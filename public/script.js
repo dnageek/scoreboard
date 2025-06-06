@@ -165,6 +165,28 @@ function handleDrop(e) {
     return false;
 }
 
+// Cookie utility functions with configurable expiry
+function setCookie(name, value, days = 30) {
+    // If remember-me is not checked, don't set an expiry (session cookie)
+    const rememberMe = document.getElementById('remember-login');
+    const options = { sameSite: 'strict' };
+
+    // Only set expiry if remember-me is checked
+    if (rememberMe && rememberMe.checked) {
+        options.expires = days;
+    }
+
+    Cookies.set(name, value, options);
+}
+
+function getCookie(name) {
+    return Cookies.get(name);
+}
+
+function removeCookie(name) {
+    Cookies.remove(name);
+}
+
 // Initialize the app
 function init() {
     // Set initial UI state
@@ -179,16 +201,31 @@ function init() {
             reasonCardsContainer.addEventListener('dragleave', handleDragLeave);
             reasonCardsContainer.addEventListener('drop', handleDrop);
 
-            // Check if we have a stored syncId and password
-            syncId = sessionStorage.getItem('scoreBoardSyncId');
-            password = sessionStorage.getItem('scoreBoardPassword');
+            // Check if we have stored credentials in cookies
+            syncId = getCookie('scoreBoardSyncId');
+            password = getCookie('scoreBoardPassword');
 
             if (syncId && password) {
-                // Try to load the board
+                // Try to load the board using cookie data
                 loadBoardWithCredentials(syncId, password);
             } else {
-                // Load available boards
-                loadAvailableBoards();
+                // Fall back to session storage (for backward compatibility)
+                syncId = sessionStorage.getItem('scoreBoardSyncId');
+                password = sessionStorage.getItem('scoreBoardPassword');
+
+                if (syncId && password) {
+                    // Migrate from sessionStorage to cookies
+                    setCookie('scoreBoardSyncId', syncId);
+                    setCookie('scoreBoardPassword', password);
+                    // Clear sessionStorage
+                    sessionStorage.removeItem('scoreBoardSyncId');
+                    sessionStorage.removeItem('scoreBoardPassword');
+
+                    loadBoardWithCredentials(syncId, password);
+                } else {
+                    // Load available boards
+                    loadAvailableBoards();
+                }
             }
         } else {
             boardList.innerHTML = '<p>Cannot connect to server. Please check your connection and try again.</p>';
@@ -295,12 +332,12 @@ function renderBoardList(boards) {
 async function createNewBoard() {
     const newId = newBoardId.value.trim();
     const newPass = newBoardPassword.value.trim();
-    
+
     if (!newId || !newPass) {
         alert('Please enter both a board ID and password');
         return;
     }
-    
+
     try {
         const response = await fetch(`${API_URL}/scoreboard`, {
             method: 'POST',
@@ -315,19 +352,25 @@ async function createNewBoard() {
                 history: []
             })
         });
-        
+
         if (response.ok) {
             // Save credentials and show board
             syncId = newId;
             password = newPass;
-            sessionStorage.setItem('scoreBoardSyncId', syncId);
-            sessionStorage.setItem('scoreBoardPassword', password);
-            
+
+            // Store credentials in cookies for persistent login
+            setCookie('scoreBoardSyncId', syncId);
+            setCookie('scoreBoardPassword', password);
+
+            // Clear any old session storage (for backward compatibility)
+            sessionStorage.removeItem('scoreBoardSyncId');
+            sessionStorage.removeItem('scoreBoardPassword');
+
             // Reset data
             currentScore = 0;
             reasons = [];
             history = [];
-            
+
             // Update UI
             renderReasonCards();
             renderHistory();
@@ -346,12 +389,16 @@ async function createNewBoard() {
 async function accessExistingBoard() {
     const boardId = existingBoardId.value.trim();
     const boardPass = existingBoardPassword.value.trim();
-    
+    const rememberMe = document.getElementById('remember-login').checked;
+
     if (!boardId || !boardPass) {
         alert('Please enter both a board ID and password');
         return;
     }
-    
+
+    // Log persistence choice for debugging
+    console.log('Keep me signed in:', rememberMe ? 'Yes (30 days)' : 'No (session only)');
+
     loadBoardWithCredentials(boardId, boardPass);
 }
 
@@ -369,32 +416,36 @@ async function loadBoardWithCredentials(boardId, boardPass) {
                 password: boardPass
             })
         });
-        
+
         if (!verifyResponse.ok) {
             alert('Invalid board ID or password');
-            // Clear session storage on failed login
+            // Clear all credentials on failed login
+            removeCookie('scoreBoardSyncId');
+            removeCookie('scoreBoardPassword');
             sessionStorage.removeItem('scoreBoardSyncId');
             sessionStorage.removeItem('scoreBoardPassword');
             showLoginPage();
             return;
         }
-        
+
         // Password verified, now load the data
         const dataResponse = await fetch(`${API_URL}/scoreboard/${boardId}`, {
             headers: {
                 'X-Password': boardPass
             }
         });
-        
+
         if (dataResponse.ok) {
             const data = await dataResponse.json();
-            
+
             // Save credentials
             syncId = boardId;
             password = boardPass;
-            sessionStorage.setItem('scoreBoardSyncId', syncId);
-            sessionStorage.setItem('scoreBoardPassword', password);
-            
+
+            // Store in cookies for persistent login
+            setCookie('scoreBoardSyncId', syncId);
+            setCookie('scoreBoardPassword', password);
+
             // Update data
             currentScore = data.currentScore;
             reasons = data.reasons;
@@ -402,7 +453,7 @@ async function loadBoardWithCredentials(boardId, boardPass) {
 
             // Ensure all reasons have a type
             ensureReasonTypes();
-            
+
             // Update UI
             renderReasonCards();
             renderHistory();
@@ -419,12 +470,14 @@ async function loadBoardWithCredentials(boardId, boardPass) {
 
 // Logout from the current board
 function logout() {
-    // Clear credentials
+    // Clear credentials from cookies and session storage
     syncId = null;
     password = null;
+    removeCookie('scoreBoardSyncId');
+    removeCookie('scoreBoardPassword');
     sessionStorage.removeItem('scoreBoardSyncId');
     sessionStorage.removeItem('scoreBoardPassword');
-    
+
     // Show login page and refresh board list
     showLoginPage();
     loadAvailableBoards();
@@ -970,9 +1023,12 @@ async function changePassword() {
         });
 
         if (response.ok) {
-            // Update stored password
+            // Update stored password in cookies
             password = newPassword;
-            sessionStorage.setItem('scoreBoardPassword', password);
+            setCookie('scoreBoardPassword', password);
+
+            // Clear old session storage (for backward compatibility)
+            sessionStorage.removeItem('scoreBoardPassword');
 
             alert('Password changed successfully');
             closeChangePasswordModal();

@@ -143,6 +143,16 @@ h1 {
     position: relative;
 }
 
+.remember-me {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    font-size: 0.9rem;
+    color: var(--secondary-color);
+}
+
 .reset-score {
     display: flex;
     justify-content: center;
