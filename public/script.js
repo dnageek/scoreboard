@@ -22,6 +22,7 @@ const confirmPasswordInput = document.getElementById('confirm-password');
 const confirmChangePasswordBtn = document.getElementById('confirm-change-password');
 const cancelChangePasswordBtn = document.getElementById('cancel-change-password');
 const closePasswordBtn = document.querySelector('.close-password');
+const randomCardBtn = document.getElementById('random-card-btn');
 
 // DOM Elements - Score Board
 const currentScoreElement = document.getElementById('current-score');
@@ -966,6 +967,38 @@ confirmChangePasswordBtn.addEventListener('click', changePassword);
 cancelChangePasswordBtn.addEventListener('click', closeChangePasswordModal);
 closePasswordBtn.addEventListener('click', closeChangePasswordModal);
 
+// Function to randomly select a card
+function selectRandomCard() {
+    // Remove any existing highlights
+    document.querySelectorAll('.reason-card').forEach(card => {
+        card.classList.remove('highlighted');
+    });
+
+    // Get all reason cards
+    const cards = document.querySelectorAll('.reason-card');
+
+    // If no cards, show alert
+    if (cards.length === 0) {
+        alert('No reason cards to select. Add some reasons first!');
+        return;
+    }
+
+    // Select a random card
+    const randomIndex = Math.floor(Math.random() * cards.length);
+    const selectedCard = cards[randomIndex];
+
+    // Add highlight class to the selected card
+    selectedCard.classList.add('highlighted');
+
+    // Scroll to the card if needed
+    selectedCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // Automatically remove the highlight after 3 seconds
+    setTimeout(() => {
+        selectedCard.classList.remove('highlighted');
+    }, 3000);
+}
+
 // Event Listeners - Score Board
 // Remove the old score button listeners as they're no longer needed
 // addScoreButton.addEventListener('click', () => updateScore(true));
@@ -974,6 +1007,7 @@ addReasonButton.addEventListener('click', addReason);
 closeModalButton.addEventListener('click', closeModal);
 saveEditButton.addEventListener('click', saveEdit);
 resetScoreButton.addEventListener('click', resetScore);
+randomCardBtn.addEventListener('click', selectRandomCard);
 
 // Show change password modal
 function showChangePasswordModal() {
