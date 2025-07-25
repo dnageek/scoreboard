@@ -26,6 +26,8 @@ const randomCardBtn = document.getElementById('random-card-btn');
 const prevPageBtn = document.getElementById('prev-page');
 const nextPageBtn = document.getElementById('next-page');
 const pageInfoElement = document.getElementById('page-info');
+const pageNumbersContainer = document.getElementById('page-numbers');
+const entriesInfoElement = document.getElementById('entries-info');
 
 // DOM Elements - Score Board
 const currentScoreElement = document.getElementById('current-score');
@@ -1132,6 +1134,14 @@ window.addEventListener('click', (e) => {
 
 // Pagination Functions
 function updatePaginationControls(totalPages) {
+    const totalItems = history.length;
+    const startItem = totalItems > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0;
+    const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+    
+    // Update entries info
+    entriesInfoElement.textContent = `Showing ${startItem}-${endItem} of ${totalItems} entries`;
+    
+    // Update button states
     if (totalPages <= 1) {
         prevPageBtn.disabled = true;
         nextPageBtn.disabled = true;
@@ -1141,6 +1151,9 @@ function updatePaginationControls(totalPages) {
         nextPageBtn.disabled = currentPage >= totalPages;
         pageInfoElement.textContent = `Page ${currentPage} of ${totalPages}`;
     }
+    
+    // Update page numbers
+    renderPageNumbers(totalPages);
 }
 
 function goToPreviousPage() {
@@ -1156,6 +1169,67 @@ function goToNextPage() {
         currentPage++;
         renderHistory();
     }
+}
+
+function goToPage(pageNumber) {
+    const totalPages = Math.ceil(history.length / itemsPerPage);
+    if (pageNumber >= 1 && pageNumber <= totalPages) {
+        currentPage = pageNumber;
+        renderHistory();
+    }
+}
+
+function renderPageNumbers(totalPages) {
+    pageNumbersContainer.innerHTML = '';
+    
+    if (totalPages <= 1) {
+        return;
+    }
+    
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+    
+    // Adjust start page if we're near the end
+    if (endPage - startPage + 1 < maxVisiblePages) {
+        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+    
+    // Add first page and ellipsis if needed
+    if (startPage > 1) {
+        addPageNumber(1);
+        if (startPage > 2) {
+            addEllipsis();
+        }
+    }
+    
+    // Add visible page numbers
+    for (let i = startPage; i <= endPage; i++) {
+        addPageNumber(i);
+    }
+    
+    // Add ellipsis and last page if needed
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            addEllipsis();
+        }
+        addPageNumber(totalPages);
+    }
+}
+
+function addPageNumber(pageNum) {
+    const pageButton = document.createElement('div');
+    pageButton.className = `page-number ${pageNum === currentPage ? 'active' : ''}`;
+    pageButton.textContent = pageNum;
+    pageButton.addEventListener('click', () => goToPage(pageNum));
+    pageNumbersContainer.appendChild(pageButton);
+}
+
+function addEllipsis() {
+    const ellipsis = document.createElement('div');
+    ellipsis.className = 'page-number ellipsis';
+    ellipsis.textContent = '...';
+    pageNumbersContainer.appendChild(ellipsis);
 }
 
 // Initialize the app when the DOM is loaded

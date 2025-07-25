@@ -119,9 +119,21 @@
                     </table>
                 </div>
                 <div class="pagination">
-                    <button id="prev-page" class="btn btn-sm" disabled>Previous</button>
-                    <span id="page-info">Page 1</span>
-                    <button id="next-page" class="btn btn-sm" disabled>Next</button>
+                    <div class="pagination-info">
+                        <span id="entries-info">Showing 0-0 of 0 entries</span>
+                    </div>
+                    <div class="pagination-controls">
+                        <button id="prev-page" class="pagination-btn" disabled>
+                            <i class="fas fa-chevron-left"></i>
+                            <span>Previous</span>
+                        </button>
+                        <div id="page-numbers" class="page-numbers"></div>
+                        <span id="page-info" class="page-info">Page 1</span>
+                        <button id="next-page" class="pagination-btn" disabled>
+                            <span>Next</span>
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
