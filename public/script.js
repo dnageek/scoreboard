@@ -29,6 +29,15 @@ const pageInfoElement = document.getElementById('page-info');
 const pageNumbersContainer = document.getElementById('page-numbers');
 const entriesInfoElement = document.getElementById('entries-info');
 
+// Statistics DOM elements
+const toggleStatsBtn = document.getElementById('toggle-stats');
+const statsTimeFilter = document.getElementById('stats-time-filter');
+const statisticsContent = document.getElementById('statistics-content');
+const totalEntriesElement = document.getElementById('total-entries');
+const avgDailyChangeElement = document.getElementById('avg-daily-change');
+const winLossRatioElement = document.getElementById('win-loss-ratio');
+const scoreRangeElement = document.getElementById('score-range');
+
 // DOM Elements - Score Board
 const currentScoreElement = document.getElementById('current-score');
 const addScoreButton = document.getElementById('add-score');
@@ -60,6 +69,11 @@ let offlineMode = false;
 // Pagination state
 let currentPage = 1;
 const itemsPerPage = 10;
+
+// Statistics state
+let statsVisible = true;
+let currentStatsFilter = 'all';
+let charts = {};
 // Always use relative path for API URL to work across devices
 const API_URL = '/api';
 
@@ -384,6 +398,7 @@ async function createNewBoard() {
             renderReasonCards();
             renderHistory();
             updateScoreDisplay();
+            renderStatistics();
             showScoreBoardPage();
         } else {
             const errorData = await response.json();
@@ -467,6 +482,7 @@ async function loadBoardWithCredentials(boardId, boardPass) {
             renderReasonCards();
             renderHistory();
             updateScoreDisplay();
+            renderStatistics();
             showScoreBoardPage();
         } else {
             const errorData = await dataResponse.json();
@@ -878,6 +894,7 @@ function updateScoreByReasonId(reasonId, isAddition) {
     syncWithServer();
     updateScoreDisplay();
     renderHistory();
+    renderStatistics();
 }
 
 function openEditModal(reasonId) {
@@ -955,6 +972,7 @@ function handleUndo(event) {
     syncWithServer();
     updateScoreDisplay();
     renderHistory();
+    renderStatistics();
 }
 
 // Reset the score to a specific value
@@ -988,6 +1006,7 @@ function resetScore() {
     syncWithServer();
     updateScoreDisplay();
     renderHistory();
+    renderStatistics();
     
     // Clear the input
     resetScoreValue.value = '';
@@ -1231,6 +1250,375 @@ function addEllipsis() {
     ellipsis.textContent = '...';
     pageNumbersContainer.appendChild(ellipsis);
 }
+
+// Statistics Functions
+function filterHistoryByTimeRange(days) {
+    if (days === 'all') return history;
+    
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - parseInt(days));
+    
+    return history.filter(entry => new Date(entry.timestamp) >= cutoffDate);
+}
+
+function calculateStatistics(filteredHistory) {
+    if (filteredHistory.length === 0) {
+        return {
+            totalEntries: 0,
+            avgDailyChange: 0,
+            winLossRatio: 0,
+            scoreRange: 0
+        };
+    }
+    
+    const positiveChanges = filteredHistory.filter(entry => entry.scoreChange > 0);
+    const negativeChanges = filteredHistory.filter(entry => entry.scoreChange < 0);
+    
+    // Calculate average daily change
+    const totalChange = filteredHistory.reduce((sum, entry) => sum + entry.scoreChange, 0);
+    const firstEntry = new Date(filteredHistory[filteredHistory.length - 1].timestamp);
+    const lastEntry = new Date(filteredHistory[0].timestamp);
+    const daysDiff = Math.max(1, Math.ceil((lastEntry - firstEntry) / (1000 * 60 * 60 * 24)));
+    const avgDailyChange = totalChange / daysDiff;
+    
+    // Calculate win/loss ratio
+    const winRate = filteredHistory.length > 0 ? (positiveChanges.length / filteredHistory.length) * 100 : 0;
+    
+    // Calculate score range
+    const scores = filteredHistory.map(entry => entry.newScore);
+    const minScore = Math.min(...scores);
+    const maxScore = Math.max(...scores);
+    const scoreRange = maxScore - minScore;
+    
+    return {
+        totalEntries: filteredHistory.length,
+        avgDailyChange: avgDailyChange,
+        winLossRatio: winRate,
+        scoreRange: scoreRange
+    };
+}
+
+function updateStatsSummary(filteredHistory) {
+    const stats = calculateStatistics(filteredHistory);
+    
+    totalEntriesElement.textContent = stats.totalEntries;
+    avgDailyChangeElement.textContent = stats.avgDailyChange >= 0 ? 
+        `+${stats.avgDailyChange.toFixed(1)}` : stats.avgDailyChange.toFixed(1);
+    winLossRatioElement.textContent = `${stats.winLossRatio.toFixed(1)}%`;
+    scoreRangeElement.textContent = stats.scoreRange;
+    
+    // Update color coding for average daily change
+    if (stats.avgDailyChange > 0) {
+        avgDailyChangeElement.style.color = 'var(--success-color)';
+    } else if (stats.avgDailyChange < 0) {
+        avgDailyChangeElement.style.color = 'var(--danger-color)';
+    } else {
+        avgDailyChangeElement.style.color = 'var(--secondary-color)';
+    }
+}
+
+function renderScoreTrendChart(filteredHistory) {
+    const ctx = document.getElementById('score-trend-chart').getContext('2d');
+    
+    if (charts.scoreTrend) {
+        charts.scoreTrend.destroy();
+    }
+    
+    if (filteredHistory.length === 0) {
+        showNoDataMessage('score-trend-chart');
+        return;
+    }
+    
+    // Sort by timestamp and prepare data
+    const sortedHistory = [...filteredHistory].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const labels = sortedHistory.map(entry => new Date(entry.timestamp).toLocaleDateString());
+    const data = sortedHistory.map(entry => entry.newScore);
+    
+    charts.scoreTrend = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Score',
+                data: data,
+                borderColor: 'rgb(74, 111, 165)',
+                backgroundColor: 'rgba(74, 111, 165, 0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: 'rgb(74, 111, 165)',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: 5
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: false,
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    }
+                },
+                x: {
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+}
+
+function renderActivityChart(filteredHistory) {
+    const ctx = document.getElementById('activity-chart').getContext('2d');
+    
+    if (charts.activity) {
+        charts.activity.destroy();
+    }
+    
+    if (filteredHistory.length === 0) {
+        showNoDataMessage('activity-chart');
+        return;
+    }
+    
+    // Group by date
+    const activityByDate = {};
+    filteredHistory.forEach(entry => {
+        const date = new Date(entry.timestamp).toDateString();
+        activityByDate[date] = (activityByDate[date] || 0) + 1;
+    });
+    
+    const labels = Object.keys(activityByDate).sort((a, b) => new Date(a) - new Date(b));
+    const data = labels.map(date => activityByDate[date]);
+    
+    charts.activity = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels.map(date => new Date(date).toLocaleDateString()),
+            datasets: [{
+                label: 'Activities',
+                data: data,
+                backgroundColor: 'rgba(71, 184, 224, 0.8)',
+                borderColor: 'rgb(71, 184, 224)',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    }
+                },
+                x: {
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+}
+
+function renderReasonUsageChart(filteredHistory) {
+    const ctx = document.getElementById('reason-usage-chart').getContext('2d');
+    
+    if (charts.reasonUsage) {
+        charts.reasonUsage.destroy();
+    }
+    
+    if (filteredHistory.length === 0) {
+        showNoDataMessage('reason-usage-chart');
+        return;
+    }
+    
+    // Group by reason
+    const reasonCounts = {};
+    filteredHistory.forEach(entry => {
+        reasonCounts[entry.reason] = (reasonCounts[entry.reason] || 0) + 1;
+    });
+    
+    const sortedReasons = Object.entries(reasonCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const labels = sortedReasons.map(item => item[0]);
+    const data = sortedReasons.map(item => item[1]);
+    
+    const colors = [
+        'rgba(74, 111, 165, 0.8)',
+        'rgba(71, 184, 224, 0.8)',
+        'rgba(46, 204, 113, 0.8)',
+        'rgba(231, 76, 60, 0.8)',
+        'rgba(243, 156, 18, 0.8)',
+        'rgba(155, 89, 182, 0.8)',
+        'rgba(52, 152, 219, 0.8)',
+        'rgba(241, 196, 15, 0.8)',
+        'rgba(230, 126, 34, 0.8)',
+        'rgba(149, 165, 166, 0.8)'
+    ];
+    
+    charts.reasonUsage = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors,
+                borderColor: colors.map(color => color.replace('0.8', '1')),
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        boxWidth: 12,
+                        padding: 15
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderScoreDistributionChart(filteredHistory) {
+    const ctx = document.getElementById('score-distribution-chart').getContext('2d');
+    
+    if (charts.scoreDistribution) {
+        charts.scoreDistribution.destroy();
+    }
+    
+    if (filteredHistory.length === 0) {
+        showNoDataMessage('score-distribution-chart');
+        return;
+    }
+    
+    // Group score changes into ranges
+    const ranges = [
+        { label: '-50+', min: -Infinity, max: -50, count: 0 },
+        { label: '-49 to -21', min: -49, max: -21, count: 0 },
+        { label: '-20 to -6', min: -20, max: -6, count: 0 },
+        { label: '-5 to -1', min: -5, max: -1, count: 0 },
+        { label: '0', min: 0, max: 0, count: 0 },
+        { label: '1 to 5', min: 1, max: 5, count: 0 },
+        { label: '6 to 20', min: 6, max: 20, count: 0 },
+        { label: '21 to 49', min: 21, max: 49, count: 0 },
+        { label: '50+', min: 50, max: Infinity, count: 0 }
+    ];
+    
+    filteredHistory.forEach(entry => {
+        const change = entry.scoreChange;
+        for (let range of ranges) {
+            if (change >= range.min && change <= range.max) {
+                range.count++;
+                break;
+            }
+        }
+    });
+    
+    const labels = ranges.map(r => r.label);
+    const data = ranges.map(r => r.count);
+    const colors = ranges.map(r => {
+        if (r.max <= 0) return 'rgba(231, 76, 60, 0.8)'; // Red for negative
+        if (r.min === 0 && r.max === 0) return 'rgba(149, 165, 166, 0.8)'; // Gray for zero
+        return 'rgba(46, 204, 113, 0.8)'; // Green for positive
+    });
+    
+    charts.scoreDistribution = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Frequency',
+                data: data,
+                backgroundColor: colors,
+                borderColor: colors.map(color => color.replace('0.8', '1')),
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    }
+                },
+                x: {
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+}
+
+function showNoDataMessage(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    const wrapper = canvas.parentElement;
+    wrapper.innerHTML = `
+        <div class="no-data-message">
+            <i class="fas fa-chart-line"></i>
+            <p>No data available for the selected time period</p>
+        </div>
+    `;
+}
+
+function renderStatistics() {
+    if (!statsVisible) return;
+    
+    const filteredHistory = filterHistoryByTimeRange(currentStatsFilter);
+    
+    updateStatsSummary(filteredHistory);
+    renderScoreTrendChart(filteredHistory);
+    renderActivityChart(filteredHistory);
+    renderReasonUsageChart(filteredHistory);
+    renderScoreDistributionChart(filteredHistory);
+}
+
+function toggleStatistics() {
+    statsVisible = !statsVisible;
+    if (statsVisible) {
+        statisticsContent.classList.remove('hidden');
+        toggleStatsBtn.innerHTML = '<i class="fas fa-chart-bar"></i> Hide Charts';
+        renderStatistics();
+    } else {
+        statisticsContent.classList.add('hidden');
+        toggleStatsBtn.innerHTML = '<i class="fas fa-chart-bar"></i> Show Charts';
+    }
+}
+
+// Event Listeners - Statistics
+toggleStatsBtn.addEventListener('click', toggleStatistics);
+statsTimeFilter.addEventListener('change', (e) => {
+    currentStatsFilter = e.target.value;
+    renderStatistics();
+});
 
 // Initialize the app when the DOM is loaded
 document.addEventListener('DOMContentLoaded', init);

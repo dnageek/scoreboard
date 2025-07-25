@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="js-cookie.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="container">
@@ -102,6 +103,23 @@
             
             <div class="history-section">
                 <h3>History</h3>
+                <div class="pagination">
+                    <div class="pagination-info">
+                        <span id="entries-info">Showing 0-0 of 0 entries</span>
+                    </div>
+                    <div class="pagination-controls">
+                        <button id="prev-page" class="pagination-btn" disabled>
+                            <i class="fas fa-chevron-left"></i>
+                            <span>Previous</span>
+                        </button>
+                        <div id="page-numbers" class="page-numbers"></div>
+                        <span id="page-info" class="page-info">Page 1</span>
+                        <button id="next-page" class="pagination-btn" disabled>
+                            <span>Next</span>
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
                 <div class="table-container">
                     <table id="history-table">
                         <thead>
@@ -118,21 +136,79 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="pagination">
-                    <div class="pagination-info">
-                        <span id="entries-info">Showing 0-0 of 0 entries</span>
+            </div>
+            
+            <!-- Statistics Section -->
+            <div class="statistics-section">
+                <div class="statistics-header">
+                    <h3>Statistics</h3>
+                    <div class="statistics-controls">
+                        <select id="stats-time-filter" class="stats-filter">
+                            <option value="7">Last 7 days</option>
+                            <option value="30">Last 30 days</option>
+                            <option value="90">Last 90 days</option>
+                            <option value="all" selected>All time</option>
+                        </select>
+                        <button id="toggle-stats" class="btn btn-sm">
+                            <i class="fas fa-chart-bar"></i> Toggle Charts
+                        </button>
                     </div>
-                    <div class="pagination-controls">
-                        <button id="prev-page" class="pagination-btn" disabled>
-                            <i class="fas fa-chevron-left"></i>
-                            <span>Previous</span>
-                        </button>
-                        <div id="page-numbers" class="page-numbers"></div>
-                        <span id="page-info" class="page-info">Page 1</span>
-                        <button id="next-page" class="pagination-btn" disabled>
-                            <span>Next</span>
-                            <i class="fas fa-chevron-right"></i>
-                        </button>
+                </div>
+                
+                <div id="statistics-content" class="statistics-content">
+                    <!-- Summary Cards -->
+                    <div class="stats-summary">
+                        <div class="stat-card">
+                            <div class="stat-value" id="total-entries">0</div>
+                            <div class="stat-label">Total Entries</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="avg-daily-change">+0</div>
+                            <div class="stat-label">Avg Daily Change</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="win-loss-ratio">0%</div>
+                            <div class="stat-label">Win Rate</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="score-range">0</div>
+                            <div class="stat-label">Score Range</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Charts Container -->
+                    <div class="charts-container">
+                        <!-- Score Trends Over Time -->
+                        <div class="chart-section">
+                            <h4>Score Trends Over Time</h4>
+                            <div class="chart-wrapper">
+                                <canvas id="score-trend-chart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <!-- Activity Analysis -->
+                        <div class="chart-section">
+                            <h4>Activity Analysis</h4>
+                            <div class="chart-wrapper">
+                                <canvas id="activity-chart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <!-- Reason Usage Statistics -->
+                        <div class="chart-section">
+                            <h4>Reason Usage Statistics</h4>
+                            <div class="chart-wrapper">
+                                <canvas id="reason-usage-chart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <!-- Score Change Distribution -->
+                        <div class="chart-section">
+                            <h4>Score Change Distribution</h4>
+                            <div class="chart-wrapper">
+                                <canvas id="score-distribution-chart"></canvas>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
