@@ -1389,39 +1389,59 @@ function renderActivityChart(filteredHistory) {
         return;
     }
     
-    // Group by date
+    // Group by date and separate positive/negative activities
     const activityByDate = {};
     filteredHistory.forEach(entry => {
         const date = new Date(entry.timestamp).toDateString();
-        activityByDate[date] = (activityByDate[date] || 0) + 1;
+        if (!activityByDate[date]) {
+            activityByDate[date] = { positive: 0, negative: 0 };
+        }
+        
+        if (entry.scoreChange > 0) {
+            activityByDate[date].positive += 1;
+        } else if (entry.scoreChange < 0) {
+            activityByDate[date].negative += 1;
+        }
     });
     
     const labels = Object.keys(activityByDate).sort((a, b) => new Date(a) - new Date(b));
-    const data = labels.map(date => activityByDate[date]);
+    const positiveData = labels.map(date => activityByDate[date].positive);
+    const negativeData = labels.map(date => activityByDate[date].negative);
     
     charts.activity = new Chart(ctx, {
         type: 'bar',
         data: {
             labels: labels.map(date => new Date(date).toLocaleDateString()),
-            datasets: [{
-                label: 'Activities',
-                data: data,
-                backgroundColor: 'rgba(71, 184, 224, 0.8)',
-                borderColor: 'rgb(71, 184, 224)',
-                borderWidth: 2
-            }]
+            datasets: [
+                {
+                    label: 'Positive Activities',
+                    data: positiveData,
+                    backgroundColor: 'rgba(46, 204, 113, 0.8)',
+                    borderColor: 'rgb(46, 204, 113)',
+                    borderWidth: 2
+                },
+                {
+                    label: 'Negative Activities',
+                    data: negativeData,
+                    backgroundColor: 'rgba(231, 76, 60, 0.8)',
+                    borderColor: 'rgb(231, 76, 60)',
+                    borderWidth: 2
+                }
+            ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             scales: {
-                y: {
-                    beginAtZero: true,
+                x: {
+                    stacked: true,
                     grid: {
                         color: 'rgba(0, 0, 0, 0.1)'
                     }
                 },
-                x: {
+                y: {
+                    stacked: true,
+                    beginAtZero: true,
                     grid: {
                         color: 'rgba(0, 0, 0, 0.1)'
                     }
@@ -1429,7 +1449,27 @@ function renderActivityChart(filteredHistory) {
             },
             plugins: {
                 legend: {
-                    display: false
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        boxWidth: 12,
+                        padding: 15,
+                        usePointStyle: true
+                    }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        afterLabel: function(context) {
+                            const datasetIndex = context.datasetIndex;
+                            const dataIndex = context.dataIndex;
+                            const positiveCount = positiveData[dataIndex];
+                            const negativeCount = negativeData[dataIndex];
+                            const total = positiveCount + negativeCount;
+                            return `Total: ${total} activities`;
+                        }
+                    }
                 }
             }
         }
