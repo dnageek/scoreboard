@@ -1026,25 +1026,25 @@ confirmChangePasswordBtn.addEventListener('click', changePassword);
 cancelChangePasswordBtn.addEventListener('click', closeChangePasswordModal);
 closePasswordBtn.addEventListener('click', closeChangePasswordModal);
 
-// Function to randomly select a card
+// Function to randomly select a card (only positive cards)
 function selectRandomCard() {
     // Remove any existing highlights
     document.querySelectorAll('.reason-card').forEach(card => {
         card.classList.remove('highlighted');
     });
 
-    // Get all reason cards
-    const cards = document.querySelectorAll('.reason-card');
+    // Get only positive reason cards (add-card class)
+    const positiveCards = document.querySelectorAll('.reason-card.add-card');
 
-    // If no cards, show alert
-    if (cards.length === 0) {
-        alert('No reason cards to select. Add some reasons first!');
+    // If no positive cards, show alert
+    if (positiveCards.length === 0) {
+        alert('No positive reason cards to select. Add some positive reasons first!');
         return;
     }
 
-    // Select a random card
-    const randomIndex = Math.floor(Math.random() * cards.length);
-    const selectedCard = cards[randomIndex];
+    // Select a random positive card
+    const randomIndex = Math.floor(Math.random() * positiveCards.length);
+    const selectedCard = positiveCards[randomIndex];
 
     // Add highlight class to the selected card
     selectedCard.classList.add('highlighted');
