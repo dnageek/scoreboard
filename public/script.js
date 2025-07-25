@@ -23,6 +23,9 @@ const confirmChangePasswordBtn = document.getElementById('confirm-change-passwor
 const cancelChangePasswordBtn = document.getElementById('cancel-change-password');
 const closePasswordBtn = document.querySelector('.close-password');
 const randomCardBtn = document.getElementById('random-card-btn');
+const prevPageBtn = document.getElementById('prev-page');
+const nextPageBtn = document.getElementById('next-page');
+const pageInfoElement = document.getElementById('page-info');
 
 // DOM Elements - Score Board
 const currentScoreElement = document.getElementById('current-score');
@@ -52,6 +55,9 @@ let syncId = null;
 let password = null;
 let isSyncing = false;
 let offlineMode = false;
+// Pagination state
+let currentPage = 1;
+const itemsPerPage = 10;
 // Always use relative path for API URL to work across devices
 const API_URL = '/api';
 
@@ -732,20 +738,39 @@ function renderHistory() {
         const row = document.createElement('tr');
         row.innerHTML = '<td colspan="5">No history yet</td>';
         historyTable.appendChild(row);
+        updatePaginationControls(0);
         return;
     }
     
     // Sort history from newest to oldest
     const sortedHistory = [...history].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     
-    sortedHistory.forEach((entry, index) => {
+    // Calculate pagination
+    const totalItems = sortedHistory.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    
+    // Ensure current page is within valid range
+    if (currentPage > totalPages) {
+        currentPage = totalPages || 1;
+    }
+    if (currentPage < 1) {
+        currentPage = 1;
+    }
+    
+    // Get items for current page
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const pageItems = sortedHistory.slice(startIndex, endIndex);
+    
+    pageItems.forEach((entry, pageIndex) => {
+        const globalIndex = startIndex + pageIndex;
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${formatDate(entry.timestamp)}</td>
             <td>${entry.reason}</td>
             <td class="${entry.scoreChange > 0 ? 'positive' : 'negative'}">${entry.scoreChange > 0 ? '+' : ''}${entry.scoreChange}</td>
             <td>${entry.newScore}</td>
-            <td><button class="undo-btn" data-index="${index}"><i class="fas fa-undo"></i> Undo</button></td>
+            <td><button class="undo-btn" data-index="${globalIndex}"><i class="fas fa-undo"></i> Undo</button></td>
         `;
         historyTable.appendChild(row);
     });
@@ -754,6 +779,9 @@ function renderHistory() {
     document.querySelectorAll('.undo-btn').forEach(button => {
         button.addEventListener('click', handleUndo);
     });
+    
+    // Update pagination controls
+    updatePaginationControls(totalPages);
 }
 
 function updateScoreDisplay() {
@@ -843,6 +871,8 @@ function updateScoreByReasonId(reasonId, isAddition) {
         reasonId: reason.id
     });
 
+    // Reset to first page to show the new entry
+    currentPage = 1;
     syncWithServer();
     updateScoreDisplay();
     renderHistory();
@@ -913,6 +943,12 @@ function handleUndo(event) {
         history.splice(entryIndex, 1);
     }
     
+    // Check if we need to go to previous page (if current page becomes empty)
+    const totalPages = Math.ceil(history.length / itemsPerPage);
+    if (currentPage > totalPages && totalPages > 0) {
+        currentPage = totalPages;
+    }
+    
     // Update UI and sync with server
     syncWithServer();
     updateScoreDisplay();
@@ -945,6 +981,8 @@ function resetScore() {
     });
     
     // Update UI and sync with server
+    // Reset to first page to show the new entry
+    currentPage = 1;
     syncWithServer();
     updateScoreDisplay();
     renderHistory();
@@ -1008,6 +1046,8 @@ closeModalButton.addEventListener('click', closeModal);
 saveEditButton.addEventListener('click', saveEdit);
 resetScoreButton.addEventListener('click', resetScore);
 randomCardBtn.addEventListener('click', selectRandomCard);
+prevPageBtn.addEventListener('click', goToPreviousPage);
+nextPageBtn.addEventListener('click', goToNextPage);
 
 // Show change password modal
 function showChangePasswordModal() {
@@ -1089,6 +1129,34 @@ window.addEventListener('click', (e) => {
         closeChangePasswordModal();
     }
 });
+
+// Pagination Functions
+function updatePaginationControls(totalPages) {
+    if (totalPages <= 1) {
+        prevPageBtn.disabled = true;
+        nextPageBtn.disabled = true;
+        pageInfoElement.textContent = totalPages === 0 ? 'No pages' : 'Page 1 of 1';
+    } else {
+        prevPageBtn.disabled = currentPage <= 1;
+        nextPageBtn.disabled = currentPage >= totalPages;
+        pageInfoElement.textContent = `Page ${currentPage} of ${totalPages}`;
+    }
+}
+
+function goToPreviousPage() {
+    if (currentPage > 1) {
+        currentPage--;
+        renderHistory();
+    }
+}
+
+function goToNextPage() {
+    const totalPages = Math.ceil(history.length / itemsPerPage);
+    if (currentPage < totalPages) {
+        currentPage++;
+        renderHistory();
+    }
+}
 
 // Initialize the app when the DOM is loaded
 document.addEventListener('DOMContentLoaded', init);
