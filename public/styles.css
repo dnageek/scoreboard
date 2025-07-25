@@ -949,3 +949,46 @@ table tr:hover {
         padding: 15px;
     }
 }
+
+/* Reason Usage Section Specific Styles */
+.reason-usage-section {
+    grid-column: 1 / -1; /* Span full width */
+}
+
+.reason-charts-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.reason-chart-wrapper {
+    background-color: white;
+    border-radius: var(--border-radius);
+    padding: 15px;
+    border: 1px solid #e0e0e0;
+}
+
+.reason-chart-wrapper h5 {
+    margin-bottom: 15px;
+    color: var(--secondary-color);
+    font-size: 1rem;
+    text-align: center;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--accent-color);
+}
+
+.reason-chart-wrapper .chart-wrapper {
+    height: 250px;
+}
+
+/* Responsive for reason charts */
+@media (max-width: 768px) {
+    .reason-charts-container {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+    
+    .reason-chart-wrapper .chart-wrapper {
+        height: 200px;
+    }
+}

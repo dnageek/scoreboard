@@ -1437,48 +1437,68 @@ function renderActivityChart(filteredHistory) {
 }
 
 function renderReasonUsageChart(filteredHistory) {
-    const ctx = document.getElementById('reason-usage-chart').getContext('2d');
-    
-    if (charts.reasonUsage) {
-        charts.reasonUsage.destroy();
+    // Clean up existing charts
+    if (charts.positiveReasons) {
+        charts.positiveReasons.destroy();
+    }
+    if (charts.negativeReasons) {
+        charts.negativeReasons.destroy();
     }
     
     if (filteredHistory.length === 0) {
-        showNoDataMessage('reason-usage-chart');
+        showNoDataMessage('positive-reason-chart');
+        showNoDataMessage('negative-reason-chart');
+        return;
+    }
+    
+    // Separate positive and negative score changes
+    const positiveEntries = filteredHistory.filter(entry => entry.scoreChange > 0);
+    const negativeEntries = filteredHistory.filter(entry => entry.scoreChange < 0);
+    
+    // Render positive reasons chart
+    renderPositiveReasonChart(positiveEntries);
+    
+    // Render negative reasons chart
+    renderNegativeReasonChart(negativeEntries);
+}
+
+function renderPositiveReasonChart(positiveEntries) {
+    const ctx = document.getElementById('positive-reason-chart').getContext('2d');
+    
+    if (positiveEntries.length === 0) {
+        showNoDataMessage('positive-reason-chart');
         return;
     }
     
     // Group by reason
     const reasonCounts = {};
-    filteredHistory.forEach(entry => {
+    positiveEntries.forEach(entry => {
         reasonCounts[entry.reason] = (reasonCounts[entry.reason] || 0) + 1;
     });
     
-    const sortedReasons = Object.entries(reasonCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const sortedReasons = Object.entries(reasonCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
     const labels = sortedReasons.map(item => item[0]);
     const data = sortedReasons.map(item => item[1]);
     
-    const colors = [
-        'rgba(74, 111, 165, 0.8)',
-        'rgba(71, 184, 224, 0.8)',
-        'rgba(46, 204, 113, 0.8)',
-        'rgba(231, 76, 60, 0.8)',
-        'rgba(243, 156, 18, 0.8)',
-        'rgba(155, 89, 182, 0.8)',
-        'rgba(52, 152, 219, 0.8)',
-        'rgba(241, 196, 15, 0.8)',
-        'rgba(230, 126, 34, 0.8)',
-        'rgba(149, 165, 166, 0.8)'
+    const positiveColors = [
+        'rgba(46, 204, 113, 0.8)',   // Green
+        'rgba(39, 174, 96, 0.8)',    // Dark green
+        'rgba(26, 188, 156, 0.8)',   // Turquoise
+        'rgba(22, 160, 133, 0.8)',   // Dark turquoise
+        'rgba(52, 152, 219, 0.8)',   // Blue
+        'rgba(41, 128, 185, 0.8)',   // Dark blue
+        'rgba(155, 89, 182, 0.8)',   // Purple
+        'rgba(142, 68, 173, 0.8)'    // Dark purple
     ];
     
-    charts.reasonUsage = new Chart(ctx, {
+    charts.positiveReasons = new Chart(ctx, {
         type: 'doughnut',
         data: {
             labels: labels,
             datasets: [{
                 data: data,
-                backgroundColor: colors,
-                borderColor: colors.map(color => color.replace('0.8', '1')),
+                backgroundColor: positiveColors,
+                borderColor: positiveColors.map(color => color.replace('0.8', '1')),
                 borderWidth: 2
             }]
         },
@@ -1489,8 +1509,11 @@ function renderReasonUsageChart(filteredHistory) {
                 legend: {
                     position: 'bottom',
                     labels: {
-                        boxWidth: 12,
-                        padding: 15
+                        boxWidth: 10,
+                        padding: 8,
+                        font: {
+                            size: 11
+                        }
                     }
                 }
             }
@@ -1498,85 +1521,65 @@ function renderReasonUsageChart(filteredHistory) {
     });
 }
 
-function renderScoreDistributionChart(filteredHistory) {
-    const ctx = document.getElementById('score-distribution-chart').getContext('2d');
+function renderNegativeReasonChart(negativeEntries) {
+    const ctx = document.getElementById('negative-reason-chart').getContext('2d');
     
-    if (charts.scoreDistribution) {
-        charts.scoreDistribution.destroy();
-    }
-    
-    if (filteredHistory.length === 0) {
-        showNoDataMessage('score-distribution-chart');
+    if (negativeEntries.length === 0) {
+        showNoDataMessage('negative-reason-chart');
         return;
     }
     
-    // Group score changes into ranges
-    const ranges = [
-        { label: '-50+', min: -Infinity, max: -50, count: 0 },
-        { label: '-49 to -21', min: -49, max: -21, count: 0 },
-        { label: '-20 to -6', min: -20, max: -6, count: 0 },
-        { label: '-5 to -1', min: -5, max: -1, count: 0 },
-        { label: '0', min: 0, max: 0, count: 0 },
-        { label: '1 to 5', min: 1, max: 5, count: 0 },
-        { label: '6 to 20', min: 6, max: 20, count: 0 },
-        { label: '21 to 49', min: 21, max: 49, count: 0 },
-        { label: '50+', min: 50, max: Infinity, count: 0 }
+    // Group by reason
+    const reasonCounts = {};
+    negativeEntries.forEach(entry => {
+        reasonCounts[entry.reason] = (reasonCounts[entry.reason] || 0) + 1;
+    });
+    
+    const sortedReasons = Object.entries(reasonCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const labels = sortedReasons.map(item => item[0]);
+    const data = sortedReasons.map(item => item[1]);
+    
+    const negativeColors = [
+        'rgba(231, 76, 60, 0.8)',    // Red
+        'rgba(192, 57, 43, 0.8)',    // Dark red
+        'rgba(230, 126, 34, 0.8)',   // Orange
+        'rgba(211, 84, 0, 0.8)',     // Dark orange
+        'rgba(243, 156, 18, 0.8)',   // Yellow
+        'rgba(212, 172, 13, 0.8)',   // Dark yellow
+        'rgba(149, 165, 166, 0.8)',  // Gray
+        'rgba(127, 140, 141, 0.8)'   // Dark gray
     ];
     
-    filteredHistory.forEach(entry => {
-        const change = entry.scoreChange;
-        for (let range of ranges) {
-            if (change >= range.min && change <= range.max) {
-                range.count++;
-                break;
-            }
-        }
-    });
-    
-    const labels = ranges.map(r => r.label);
-    const data = ranges.map(r => r.count);
-    const colors = ranges.map(r => {
-        if (r.max <= 0) return 'rgba(231, 76, 60, 0.8)'; // Red for negative
-        if (r.min === 0 && r.max === 0) return 'rgba(149, 165, 166, 0.8)'; // Gray for zero
-        return 'rgba(46, 204, 113, 0.8)'; // Green for positive
-    });
-    
-    charts.scoreDistribution = new Chart(ctx, {
-        type: 'bar',
+    charts.negativeReasons = new Chart(ctx, {
+        type: 'doughnut',
         data: {
             labels: labels,
             datasets: [{
-                label: 'Frequency',
                 data: data,
-                backgroundColor: colors,
-                borderColor: colors.map(color => color.replace('0.8', '1')),
+                backgroundColor: negativeColors,
+                borderColor: negativeColors.map(color => color.replace('0.8', '1')),
                 borderWidth: 2
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: {
-                        color: 'rgba(0, 0, 0, 0.1)'
-                    }
-                },
-                x: {
-                    grid: {
-                        color: 'rgba(0, 0, 0, 0.1)'
-                    }
-                }
-            },
             plugins: {
                 legend: {
-                    display: false
+                    position: 'bottom',
+                    labels: {
+                        boxWidth: 10,
+                        padding: 8,
+                        font: {
+                            size: 11
+                        }
+                    }
                 }
             }
         }
     });
 }
+
 
 function showNoDataMessage(canvasId) {
     const canvas = document.getElementById(canvasId);
@@ -1598,7 +1601,6 @@ function renderStatistics() {
     renderScoreTrendChart(filteredHistory);
     renderActivityChart(filteredHistory);
     renderReasonUsageChart(filteredHistory);
-    renderScoreDistributionChart(filteredHistory);
 }
 
 function toggleStatistics() {

@@ -195,20 +195,24 @@
                         </div>
                         
                         <!-- Reason Usage Statistics -->
-                        <div class="chart-section">
+                        <div class="chart-section reason-usage-section">
                             <h4>Reason Usage Statistics</h4>
-                            <div class="chart-wrapper">
-                                <canvas id="reason-usage-chart"></canvas>
+                            <div class="reason-charts-container">
+                                <div class="reason-chart-wrapper">
+                                    <h5>Positive Score Changes</h5>
+                                    <div class="chart-wrapper">
+                                        <canvas id="positive-reason-chart"></canvas>
+                                    </div>
+                                </div>
+                                <div class="reason-chart-wrapper">
+                                    <h5>Negative Score Changes</h5>
+                                    <div class="chart-wrapper">
+                                        <canvas id="negative-reason-chart"></canvas>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         
-                        <!-- Score Change Distribution -->
-                        <div class="chart-section">
-                            <h4>Score Change Distribution</h4>
-                            <div class="chart-wrapper">
-                                <canvas id="score-distribution-chart"></canvas>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>
