@@ -66,6 +66,7 @@ let syncId = null;
 let password = null;
 let isSyncing = false;
 let offlineMode = false;
+let pendingSync = false;
 // Pagination state
 let currentPage = 1;
 const itemsPerPage = 10;
@@ -605,11 +606,27 @@ function generateSyncId() {
 
 // Server Sync Functions
 async function syncWithServer() {
-    if (isSyncing || !syncId || !password || offlineMode) return;
+    // If not ready to sync, just mark that sync is needed
+    if (!syncId || !password || offlineMode) return;
+    
+    // If already syncing, mark that another sync is pending
+    if (isSyncing) {
+        pendingSync = true;
+        return;
+    }
 
     try {
         isSyncing = true;
+        pendingSync = false;
         updateSyncStatus('Syncing...');
+
+        // Capture current state to avoid race conditions
+        const dataToSync = {
+            syncId,
+            currentScore,
+            reasons: [...reasons],
+            history: [...history]
+        };
 
         // Add retry logic
         let retries = 3;
@@ -627,12 +644,7 @@ async function syncWithServer() {
                         'Content-Type': 'application/json',
                         'X-Password': password
                     },
-                    body: JSON.stringify({
-                        syncId,
-                        currentScore,
-                        reasons,
-                        history
-                    }),
+                    body: JSON.stringify(dataToSync),
                     signal: controller.signal
                 });
                 
@@ -669,6 +681,11 @@ async function syncWithServer() {
         setTimeout(syncWithServer, 60000);
     } finally {
         isSyncing = false;
+        
+        // If there was a pending sync request, trigger it now
+        if (pendingSync) {
+            setTimeout(syncWithServer, 100); // Small delay to avoid tight loop
+        }
     }
 }
 
