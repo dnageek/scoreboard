@@ -170,6 +170,7 @@ A comprehensive web-based score board application designed for tracking points w
 - **nodemon** (^3.0.1): Development server with auto-reload
 - **cors** (^2.8.5): Cross-Origin Resource Sharing middleware  
 - **dotenv** (^16.3.1): Environment variable management
+- **compression** (^1.8.1): Gzip compression middleware
 
 ### Key Implementation Features
 
@@ -275,10 +276,16 @@ npm run dev        # Start development server with auto-reload
 
 ### Common Issues
 
+**Deployment Issues**
+- **Missing Dependencies**: Ensure all dependencies are listed in `package.json`
+- **Node Version**: Verify Node.js version compatibility (v14+)
+- **Environment Variables**: Check that all required env vars are set in deployment platform
+- **Build Process**: Verify deployment platform is running `npm install` correctly
+
 **Connection Issues**
 - Verify MongoDB Atlas connection string
 - Check network connectivity
-- Ensure IP whitelist includes your address
+- Ensure IP whitelist includes your address (use `0.0.0.0/0` for all IPs)
 
 **Authentication Problems**
 - Verify correct Board ID and password
@@ -289,6 +296,19 @@ npm run dev        # Start development server with auto-reload
 - Clear browser cache
 - Check network connection
 - Verify MongoDB Atlas cluster status
+
+### Deployment Platforms
+
+**Render.com**
+- Ensure `package.json` includes all dependencies
+- Set environment variables in Render dashboard
+- Check build logs for specific error messages
+- Verify start command is set to `npm start`
+
+**Heroku**
+- Add MongoDB Atlas connection string to Config Vars
+- Ensure proper Procfile if needed
+- Check Heroku logs with `heroku logs --tail`
 
 ## 📋 Changelog
 

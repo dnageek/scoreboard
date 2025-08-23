@@ -4,7 +4,14 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
 const bcrypt = require('bcrypt');
-const compression = require('compression');
+
+// Try to load compression module
+let compression;
+try {
+  compression = require('compression');
+} catch (err) {
+  console.warn('Compression module not found, proceeding without compression');
+}
 
 // Load environment variables
 dotenv.config();
@@ -14,8 +21,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-// Enable compression for all responses
-app.use(compression());
+// Enable compression for all responses if available
+if (compression) {
+  app.use(compression());
+}
 
 // Configure CORS to allow requests from any origin
 app.use(cors({
