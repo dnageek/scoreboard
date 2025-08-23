@@ -627,6 +627,16 @@ async function syncWithServer() {
             reasons: [...reasons],
             history: [...history]
         };
+        
+        // Validate data can be serialized to JSON
+        try {
+            JSON.stringify(dataToSync);
+        } catch (jsonError) {
+            console.error('JSON serialization error:', jsonError);
+            console.error('Data that failed to serialize:', dataToSync);
+            updateSyncStatus(`Data error: ${jsonError.message}`);
+            return;
+        }
 
         // Add retry logic
         let retries = 3;
@@ -637,6 +647,14 @@ async function syncWithServer() {
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 10000);
+                
+                // Log the data being sent for debugging
+                console.log('Sending sync data:', {
+                    syncId: dataToSync.syncId,
+                    currentScore: dataToSync.currentScore,
+                    reasonsCount: dataToSync.reasons.length,
+                    historyCount: dataToSync.history.length
+                });
                 
                 const response = await fetch(`${API_URL}/scoreboard`, {
                     method: 'POST',
@@ -656,8 +674,16 @@ async function syncWithServer() {
                     updateSyncStatus('Synced');
                     setTimeout(() => updateSyncStatus(''), 3000);
                 } else {
-                    const errorData = await response.json();
-                    errorMsg = errorData.message;
+                    // Check if response is JSON before parsing
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        const errorData = await response.json();
+                        errorMsg = errorData.message;
+                    } else {
+                        // Server returned HTML error page (likely 500 error)
+                        errorMsg = `Server error (${response.status}): ${response.statusText}`;
+                        console.warn('Server returned non-JSON response:', await response.text());
+                    }
                     throw new Error(errorMsg);
                 }
             } catch (innerErr) {
