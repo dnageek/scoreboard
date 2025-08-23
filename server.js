@@ -19,7 +19,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'X-Password']
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // Increase limit for large histories
 app.use(express.static(path.join(__dirname, 'public')));
 
 // MongoDB connection with options

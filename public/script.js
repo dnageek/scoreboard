@@ -71,6 +71,20 @@ let pendingSync = false;
 let currentPage = 1;
 const itemsPerPage = 10;
 
+// History management
+const MAX_HISTORY_ENTRIES = 1000; // Keep max 1000 history entries
+
+// Function to trim history to prevent payload size issues
+function trimHistory() {
+    if (history.length > MAX_HISTORY_ENTRIES) {
+        // Sort by timestamp to ensure we keep the most recent entries
+        history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        // Keep only the most recent entries
+        history = history.slice(0, MAX_HISTORY_ENTRIES);
+        console.log(`History trimmed to ${MAX_HISTORY_ENTRIES} entries`);
+    }
+}
+
 // Statistics state
 let statsVisible = true;
 let currentStatsFilter = 'all';
@@ -475,6 +489,9 @@ async function loadBoardWithCredentials(boardId, boardPass) {
             currentScore = data.currentScore;
             reasons = data.reasons;
             history = data.history;
+            
+            // Trim history if it's too large
+            trimHistory();
 
             // Ensure all reasons have a type
             ensureReasonTypes();
@@ -931,6 +948,9 @@ function updateScoreByReasonId(reasonId, isAddition) {
         newScore: currentScore,
         reasonId: reason.id
     });
+    
+    // Trim history to prevent payload size issues
+    trimHistory();
 
     // Reset to first page to show the new entry
     currentPage = 1;
@@ -1042,6 +1062,9 @@ function resetScore() {
         newScore: currentScore,
         reasonId: null
     });
+    
+    // Trim history to prevent payload size issues
+    trimHistory();
     
     // Update UI and sync with server
     // Reset to first page to show the new entry
