@@ -71,8 +71,8 @@ let pendingSync = false;
 let currentPage = 1;
 const itemsPerPage = 10;
 
-// History management
-const MAX_HISTORY_ENTRIES = 1000; // Keep max 1000 history entries
+// History management - much higher limit with compression
+const MAX_HISTORY_ENTRIES = 10000; // Keep max 10,000 history entries
 
 // Function to trim history to prevent payload size issues
 function trimHistory() {

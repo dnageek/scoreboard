@@ -4,6 +4,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
 const bcrypt = require('bcrypt');
+const compression = require('compression');
 
 // Load environment variables
 dotenv.config();
@@ -13,13 +14,16 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
+// Enable compression for all responses
+app.use(compression());
+
 // Configure CORS to allow requests from any origin
 app.use(cors({
   origin: '*',  // Allow all origins
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'X-Password']
 }));
-app.use(express.json({ limit: '10mb' })); // Increase limit for large histories
+app.use(express.json({ limit: '50mb' })); // Large limit for extensive histories
 app.use(express.static(path.join(__dirname, 'public')));
 
 // MongoDB connection with options
