@@ -26,6 +26,8 @@ const randomCardBtn = document.getElementById('random-card-btn');
 const prevPageBtn = document.getElementById('prev-page');
 const nextPageBtn = document.getElementById('next-page');
 const pageInfoElement = document.getElementById('page-info');
+const boardSelector = document.getElementById('board-selector');
+const addBoardBtn = document.getElementById('add-board-btn');
 const pageNumbersContainer = document.getElementById('page-numbers');
 const entriesInfoElement = document.getElementById('entries-info');
 
@@ -64,6 +66,8 @@ let selectedReason = null;
 let editingReasonId = null;
 let syncId = null;
 let password = null;
+let savedBoards = {}; // Store multiple board credentials
+let currentBoardId = null;
 let isSyncing = false;
 let offlineMode = false;
 let pendingSync = false;
@@ -239,6 +243,9 @@ function init() {
             reasonCardsContainer.addEventListener('dragleave', handleDragLeave);
             reasonCardsContainer.addEventListener('drop', handleDrop);
 
+            // Load saved boards
+            loadSavedBoards();
+
             // Check if we have stored credentials in cookies
             syncId = getCookie('scoreBoardSyncId');
             password = getCookie('scoreBoardPassword');
@@ -395,10 +402,14 @@ async function createNewBoard() {
             // Save credentials and show board
             syncId = newId;
             password = newPass;
+            currentBoardId = newId;
 
             // Store credentials in cookies for persistent login
             setCookie('scoreBoardSyncId', syncId);
             setCookie('scoreBoardPassword', password);
+            
+            // Add to saved boards
+            addBoardToSaved(newId, newPass);
 
             // Clear any old session storage (for backward compatibility)
             sessionStorage.removeItem('scoreBoardSyncId');
@@ -480,10 +491,14 @@ async function loadBoardWithCredentials(boardId, boardPass) {
             // Save credentials
             syncId = boardId;
             password = boardPass;
+            currentBoardId = boardId;
 
             // Store in cookies for persistent login
             setCookie('scoreBoardSyncId', syncId);
             setCookie('scoreBoardPassword', password);
+            
+            // Add to saved boards
+            addBoardToSaved(boardId, boardPass);
 
             // Update data
             currentScore = data.currentScore;
@@ -513,9 +528,10 @@ async function loadBoardWithCredentials(boardId, boardPass) {
 
 // Logout from the current board
 function logout() {
-    // Clear credentials from cookies and session storage
+    // Clear current board credentials from cookies and session storage
     syncId = null;
     password = null;
+    currentBoardId = null;
     removeCookie('scoreBoardSyncId');
     removeCookie('scoreBoardPassword');
     sessionStorage.removeItem('scoreBoardSyncId');
@@ -1136,6 +1152,17 @@ randomCardBtn.addEventListener('click', selectRandomCard);
 prevPageBtn.addEventListener('click', goToPreviousPage);
 nextPageBtn.addEventListener('click', goToNextPage);
 
+// Multi-board event listeners
+boardSelector.addEventListener('change', (e) => {
+    if (e.target.value) {
+        switchToBoard(e.target.value);
+    }
+});
+
+addBoardBtn.addEventListener('click', () => {
+    showLoginPage();
+});
+
 // Show change password modal
 function showChangePasswordModal() {
     // Reset form fields
@@ -1727,6 +1754,52 @@ statsTimeFilter.addEventListener('change', (e) => {
     currentStatsFilter = e.target.value;
     renderStatistics();
 });
+
+// Multi-board management functions
+function loadSavedBoards() {
+    const saved = getCookie('savedBoards');
+    if (saved) {
+        try {
+            savedBoards = JSON.parse(saved);
+        } catch (e) {
+            savedBoards = {};
+        }
+    }
+    updateBoardSelector();
+}
+
+function saveBoardsToStorage() {
+    setCookie('savedBoards', JSON.stringify(savedBoards));
+}
+
+function addBoardToSaved(boardId, boardPassword) {
+    savedBoards[boardId] = {
+        password: boardPassword,
+        lastAccessed: new Date().toISOString()
+    };
+    saveBoardsToStorage();
+    updateBoardSelector();
+}
+
+function updateBoardSelector() {
+    boardSelector.innerHTML = '<option value="">Select a board...</option>';
+    Object.keys(savedBoards).forEach(boardId => {
+        const option = document.createElement('option');
+        option.value = boardId;
+        option.textContent = boardId;
+        if (boardId === currentBoardId) {
+            option.selected = true;
+        }
+        boardSelector.appendChild(option);
+    });
+}
+
+function switchToBoard(boardId) {
+    if (!savedBoards[boardId]) return;
+    
+    const boardData = savedBoards[boardId];
+    loadBoardWithCredentials(boardId, boardData.password);
+}
 
 // Initialize the app when the DOM is loaded
 document.addEventListener('DOMContentLoaded', init);

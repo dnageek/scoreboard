@@ -462,6 +462,20 @@ table tr:hover {
     margin-bottom: 20px;
 }
 
+.board-switcher {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.board-selector {
+    min-width: 200px;
+    padding: 8px;
+    border: 1px solid var(--primary-color);
+    border-radius: var(--border-radius);
+    font-size: 14px;
+}
+
 .page-actions {
     display: flex;
     gap: 10px;
