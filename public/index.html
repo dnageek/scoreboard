@@ -59,12 +59,6 @@
         <div id="scoreboard-page" class="page">
             <div class="page-header">
                 <h1>Score Board</h1>
-                <div class="board-switcher">
-                    <select id="board-selector" class="board-selector">
-                        <option value="">Select a board...</option>
-                    </select>
-                    <button id="add-board-btn" class="btn btn-sm"><i class="fas fa-plus"></i> Add Board</button>
-                </div>
                 <div class="page-actions">
                     <button id="change-password-btn" class="btn btn-sm"><i class="fas fa-key"></i> Change Password</button>
                     <button id="logout-btn" class="btn btn-sm"><i class="fas fa-sign-out-alt"></i> Logout</button>
@@ -81,6 +75,19 @@
                 <div class="sync-info">
                     <p>Board ID: <span id="sync-id">-</span></p>
                     <div id="sync-status"></div>
+                </div>
+            </div>
+
+            <!-- Fancy Board Selector -->
+            <div class="board-manager">
+                <div class="board-manager-header">
+                    <h3><i class="fas fa-clipboard-list"></i> My Boards</h3>
+                    <button id="add-board-btn" class="btn btn-primary btn-sm">
+                        <i class="fas fa-plus"></i> Add Board
+                    </button>
+                </div>
+                <div id="board-cards" class="board-cards">
+                    <!-- Board cards will be dynamically added here -->
                 </div>
             </div>
             

@@ -26,7 +26,7 @@ const randomCardBtn = document.getElementById('random-card-btn');
 const prevPageBtn = document.getElementById('prev-page');
 const nextPageBtn = document.getElementById('next-page');
 const pageInfoElement = document.getElementById('page-info');
-const boardSelector = document.getElementById('board-selector');
+const boardCardsContainer = document.getElementById('board-cards');
 const addBoardBtn = document.getElementById('add-board-btn');
 const pageNumbersContainer = document.getElementById('page-numbers');
 const entriesInfoElement = document.getElementById('entries-info');
@@ -408,8 +408,8 @@ async function createNewBoard() {
             setCookie('scoreBoardSyncId', syncId);
             setCookie('scoreBoardPassword', password);
             
-            // Add to saved boards
-            addBoardToSaved(newId, newPass);
+            // Add to saved boards with initial score
+            addBoardToSaved(newId, newPass, 0);
 
             // Clear any old session storage (for backward compatibility)
             sessionStorage.removeItem('scoreBoardSyncId');
@@ -497,8 +497,8 @@ async function loadBoardWithCredentials(boardId, boardPass) {
             setCookie('scoreBoardSyncId', syncId);
             setCookie('scoreBoardPassword', password);
             
-            // Add to saved boards
-            addBoardToSaved(boardId, boardPass);
+            // Add to saved boards with current score
+            addBoardToSaved(boardId, boardPass, data.currentScore);
 
             // Update data
             currentScore = data.currentScore;
@@ -880,6 +880,14 @@ function renderHistory() {
 
 function updateScoreDisplay() {
     currentScoreElement.textContent = currentScore;
+    
+    // Update score in saved boards
+    if (currentBoardId && savedBoards[currentBoardId]) {
+        savedBoards[currentBoardId].currentScore = currentScore;
+        savedBoards[currentBoardId].lastAccessed = new Date().toISOString();
+        saveBoardsToStorage();
+        updateBoardCards();
+    }
 }
 
 function formatDate(timestamp) {
@@ -1153,12 +1161,6 @@ prevPageBtn.addEventListener('click', goToPreviousPage);
 nextPageBtn.addEventListener('click', goToNextPage);
 
 // Multi-board event listeners
-boardSelector.addEventListener('change', (e) => {
-    if (e.target.value) {
-        switchToBoard(e.target.value);
-    }
-});
-
 addBoardBtn.addEventListener('click', () => {
     showLoginPage();
 });
@@ -1765,33 +1767,105 @@ function loadSavedBoards() {
             savedBoards = {};
         }
     }
-    updateBoardSelector();
+    updateBoardCards();
 }
 
 function saveBoardsToStorage() {
     setCookie('savedBoards', JSON.stringify(savedBoards));
 }
 
-function addBoardToSaved(boardId, boardPassword) {
+function addBoardToSaved(boardId, boardPassword, score = 0) {
+    // Generate a color for the board based on board ID
+    const colors = [
+        '#4a6fa5', '#e74c3c', '#2ecc71', '#f39c12', 
+        '#9b59b6', '#1abc9c', '#34495e', '#e67e22'
+    ];
+    const colorIndex = boardId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
+    
     savedBoards[boardId] = {
         password: boardPassword,
-        lastAccessed: new Date().toISOString()
+        lastAccessed: new Date().toISOString(),
+        currentScore: score,
+        color: colors[colorIndex]
     };
     saveBoardsToStorage();
-    updateBoardSelector();
+    updateBoardCards();
 }
 
-function updateBoardSelector() {
-    boardSelector.innerHTML = '<option value="">Select a board...</option>';
-    Object.keys(savedBoards).forEach(boardId => {
-        const option = document.createElement('option');
-        option.value = boardId;
-        option.textContent = boardId;
-        if (boardId === currentBoardId) {
-            option.selected = true;
-        }
-        boardSelector.appendChild(option);
+function updateBoardCards() {
+    if (!boardCardsContainer) return;
+    
+    boardCardsContainer.innerHTML = '';
+    
+    if (Object.keys(savedBoards).length === 0) {
+        boardCardsContainer.innerHTML = '<p class="no-boards">No saved boards yet. Add your first board!</p>';
+        return;
+    }
+    
+    Object.entries(savedBoards).forEach(([boardId, boardData]) => {
+        const card = document.createElement('div');
+        card.className = `board-card ${boardId === currentBoardId ? 'active' : ''}`;
+        card.style.borderLeftColor = boardData.color;
+        
+        const lastAccessed = new Date(boardData.lastAccessed);
+        const timeAgo = getTimeAgo(lastAccessed);
+        
+        card.innerHTML = `
+            <div class="board-card-header">
+                <div class="board-icon" style="background-color: ${boardData.color}">
+                    <i class="fas fa-clipboard-list"></i>
+                </div>
+                <div class="board-info">
+                    <h4 class="board-name">${boardId}</h4>
+                    <p class="board-score">Score: ${boardData.currentScore || 0}</p>
+                </div>
+                <button class="board-remove-btn" data-board="${boardId}" title="Remove from saved boards">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="board-card-footer">
+                <span class="last-accessed">Last accessed: ${timeAgo}</span>
+            </div>
+        `;
+        
+        // Add click event to switch boards
+        card.addEventListener('click', (e) => {
+            if (e.target.closest('.board-remove-btn')) {
+                removeBoardFromSaved(boardId);
+                return;
+            }
+            switchToBoard(boardId);
+        });
+        
+        boardCardsContainer.appendChild(card);
     });
+}
+
+function getTimeAgo(date) {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+}
+
+function removeBoardFromSaved(boardId) {
+    if (confirm(`Remove "${boardId}" from saved boards?`)) {
+        delete savedBoards[boardId];
+        saveBoardsToStorage();
+        updateBoardCards();
+        
+        // If removing current board, clear current session
+        if (boardId === currentBoardId) {
+            logout();
+        }
+    }
 }
 
 function switchToBoard(boardId) {
