@@ -68,6 +68,7 @@ let syncId = null;
 let password = null;
 let savedBoards = {}; // Store multiple board credentials
 let currentBoardId = null;
+let changingPasswordForBoardId = null;
 let isSyncing = false;
 let offlineMode = false;
 let pendingSync = false;
@@ -1111,7 +1112,7 @@ deleteBoardBtn.addEventListener('click', showDeleteConfirmation);
 confirmDeleteBtn.addEventListener('click', deleteBoard);
 cancelDeleteBtn.addEventListener('click', closeDeleteConfirmation);
 closeDeleteBtn.addEventListener('click', closeDeleteConfirmation);
-changePasswordBtn.addEventListener('click', showChangePasswordModal);
+// changePasswordBtn removed - now handled per-board
 confirmChangePasswordBtn.addEventListener('click', changePassword);
 cancelChangePasswordBtn.addEventListener('click', closeChangePasswordModal);
 closePasswordBtn.addEventListener('click', closeChangePasswordModal);
@@ -1165,12 +1166,20 @@ addBoardBtn.addEventListener('click', () => {
     showLoginPage();
 });
 
-// Show change password modal
-function showChangePasswordModal() {
+// Show change password modal for specific board
+function showChangePasswordModal(boardId) {
+    changingPasswordForBoardId = boardId;
+    
     // Reset form fields
     currentPasswordInput.value = '';
     newPasswordInput.value = '';
     confirmPasswordInput.value = '';
+
+    // Update modal title to show which board
+    const modalTitle = changePasswordModal.querySelector('h3');
+    if (modalTitle) {
+        modalTitle.innerHTML = `<i class="fas fa-key"></i> Change Password for "${boardId}"`;
+    }
 
     // Show the modal
     changePasswordModal.style.display = 'block';
@@ -1179,10 +1188,16 @@ function showChangePasswordModal() {
 // Close change password modal
 function closeChangePasswordModal() {
     changePasswordModal.style.display = 'none';
+    changingPasswordForBoardId = null;
 }
 
 // Change the board password
 async function changePassword() {
+    if (!changingPasswordForBoardId) {
+        alert('No board selected for password change');
+        return;
+    }
+    
     const currentPassword = currentPasswordInput.value.trim();
     const newPassword = newPasswordInput.value.trim();
     const confirmPassword = confirmPasswordInput.value.trim();
@@ -1199,9 +1214,9 @@ async function changePassword() {
     }
 
     try {
-        updateSyncStatus('Changing password...');
+        updateSyncStatus(`Changing password for ${changingPasswordForBoardId}...`);
 
-        const response = await fetch(`${API_URL}/scoreboard/${syncId}/password`, {
+        const response = await fetch(`${API_URL}/scoreboard/${changingPasswordForBoardId}/password`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
@@ -1213,14 +1228,20 @@ async function changePassword() {
         });
 
         if (response.ok) {
-            // Update stored password in cookies
-            password = newPassword;
-            setCookie('scoreBoardPassword', password);
+            // Update stored password in saved boards
+            if (savedBoards[changingPasswordForBoardId]) {
+                savedBoards[changingPasswordForBoardId].password = newPassword;
+                saveBoardsToStorage();
+            }
+            
+            // If this is the currently active board, update global password too
+            if (changingPasswordForBoardId === currentBoardId) {
+                password = newPassword;
+                setCookie('scoreBoardPassword', password);
+                sessionStorage.removeItem('scoreBoardPassword');
+            }
 
-            // Clear old session storage (for backward compatibility)
-            sessionStorage.removeItem('scoreBoardPassword');
-
-            alert('Password changed successfully');
+            alert(`Password changed successfully for "${changingPasswordForBoardId}"`);
             closeChangePasswordModal();
             updateSyncStatus('Password updated');
             setTimeout(() => updateSyncStatus(''), 3000);
@@ -1819,9 +1840,14 @@ function updateBoardCards() {
                     <h4 class="board-name">${boardId}</h4>
                     <p class="board-score">Score: ${boardData.currentScore || 0}</p>
                 </div>
-                <button class="board-remove-btn" data-board="${boardId}" title="Remove from saved boards">
-                    <i class="fas fa-times"></i>
-                </button>
+                <div class="board-actions">
+                    <button class="board-action-btn board-settings-btn" data-board="${boardId}" title="Change password">
+                        <i class="fas fa-cog"></i>
+                    </button>
+                    <button class="board-action-btn board-remove-btn" data-board="${boardId}" title="Remove from saved boards">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
             </div>
             <div class="board-card-footer">
                 <span class="last-accessed">Last accessed: ${timeAgo}</span>
@@ -1832,6 +1858,10 @@ function updateBoardCards() {
         card.addEventListener('click', (e) => {
             if (e.target.closest('.board-remove-btn')) {
                 removeBoardFromSaved(boardId);
+                return;
+            }
+            if (e.target.closest('.board-settings-btn')) {
+                showChangePasswordModal(boardId);
                 return;
             }
             switchToBoard(boardId);

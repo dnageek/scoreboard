@@ -565,7 +565,12 @@ table tr:hover {
     font-weight: 500;
 }
 
-.board-remove-btn {
+.board-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.board-action-btn {
     background: none;
     border: none;
     color: #999;
@@ -575,11 +580,21 @@ table tr:hover {
     transition: all 0.2s ease;
     opacity: 0;
     transform: scale(0.8);
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.board-card:hover .board-remove-btn {
+.board-card:hover .board-action-btn {
     opacity: 1;
     transform: scale(1);
+}
+
+.board-settings-btn:hover {
+    background: #e3f2fd;
+    color: var(--primary-color);
 }
 
 .board-remove-btn:hover {
