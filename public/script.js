@@ -201,7 +201,10 @@ function handleDrop(e) {
         reasons.splice(dropIndex, 0, removed);
 
         // Save and re-render
-        syncWithServer();
+        runIncrementalSync(() => boardRequest('/reasons/reorder', {
+            method: 'PUT',
+            body: { reasons }
+        }));
         renderReasonCards();
     }
 
@@ -639,6 +642,48 @@ function generateSyncId() {
 }
 
 // Server Sync Functions
+async function boardRequest(path, options = {}) {
+    if (!syncId || !password) {
+        throw new Error('Board credentials are missing');
+    }
+
+    const headers = {
+        'X-Password': password,
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.headers || {})
+    };
+    const config = {
+        ...options,
+        headers
+    };
+
+    if (options.body && typeof options.body !== 'string') {
+        config.body = JSON.stringify(options.body);
+    }
+
+    const response = await fetch(`${API_URL}/scoreboard/${syncId}${path}`, config);
+    if (!response.ok) {
+        let message = `Request failed (${response.status})`;
+        const contentType = response.headers.get('content-type');
+
+        if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            if (errorData.message) {
+                message = errorData.message;
+            }
+        }
+
+        throw new Error(message);
+    }
+
+    if (response.status === 204) {
+        return null;
+    }
+
+    const contentType = response.headers.get('content-type');
+    return contentType && contentType.includes('application/json') ? response.json() : null;
+}
+
 async function syncWithServer() {
     // If not ready to sync, just mark that sync is needed
     if (!syncId || !password || offlineMode) return;
@@ -752,6 +797,38 @@ async function syncWithServer() {
 function updateSyncStatus(message) {
     if (syncStatusElement) {
         syncStatusElement.textContent = message;
+    }
+}
+
+async function runIncrementalSync(action, successMessage = 'Synced') {
+    if (!syncId || !password || offlineMode) return false;
+
+    if (isSyncing) {
+        pendingSync = true;
+        return false;
+    }
+
+    try {
+        isSyncing = true;
+        pendingSync = false;
+        updateSyncStatus('Syncing...');
+        await action();
+        offlineMode = false;
+        updateSyncStatus(successMessage);
+        setTimeout(() => updateSyncStatus(''), 3000);
+        return true;
+    } catch (err) {
+        if (err.message.includes('Failed to fetch') || err.name === 'AbortError') {
+            offlineMode = true;
+            updateSyncStatus('Cannot connect to server. Try again later.');
+        } else {
+            updateSyncStatus(`Sync error: ${err.message}. Will retry full sync.`);
+        }
+        pendingSync = true;
+        setTimeout(syncWithServer, 1000);
+        return false;
+    } finally {
+        isSyncing = false;
     }
 }
 
@@ -935,7 +1012,6 @@ function addReason() {
     };
 
     reasons.push(newReason);
-    syncWithServer();
     renderReasonCards();
 
     // Clear inputs
@@ -944,6 +1020,11 @@ function addReason() {
 
     // Auto-select the newly added reason
     selectReason(newReason.id);
+
+    runIncrementalSync(() => boardRequest('/reasons', {
+        method: 'POST',
+        body: { reason: newReason }
+    }));
 }
 
 // This function is no longer needed as we're now using updateScoreByReasonId
@@ -974,24 +1055,32 @@ function updateScoreByReasonId(reasonId, isAddition) {
     currentScore += scoreChange;
 
     // Add to history with unique ID
-    history.push({
+    const newEntry = {
         id: Date.now().toString(),
         timestamp: new Date().toISOString(),
         reason: reason.text,
         scoreChange,
         newScore: currentScore,
         reasonId: reason.id
-    });
+    };
+    history.push(newEntry);
     
     // Trim history to prevent payload size issues
     trimHistory();
 
     // Reset to first page to show the new entry
     currentPage = 1;
-    syncWithServer();
     updateScoreDisplay();
     renderHistory();
     renderStatistics();
+
+    runIncrementalSync(() => boardRequest('/entries', {
+        method: 'POST',
+        body: {
+            entry: newEntry,
+            currentScore
+        }
+    }));
 }
 
 function openEditModal(reasonId) {
@@ -1038,9 +1127,17 @@ function saveEdit() {
         type    // Store the explicitly selected type
     };
 
-    syncWithServer();
     renderReasonCards();
     closeModal();
+
+    runIncrementalSync(() => boardRequest(`/reasons/${editingReasonId}`, {
+        method: 'PUT',
+        body: {
+            text,
+            score,
+            type
+        }
+    }));
 }
 
 function deleteReason(reasonId) {
@@ -1056,8 +1153,11 @@ function deleteReason(reasonId) {
         selectedReason = null;
     }
 
-    syncWithServer();
     renderReasonCards();
+
+    runIncrementalSync(() => boardRequest(`/reasons/${reasonId}`, {
+        method: 'DELETE'
+    }));
 }
 
 // Handle undo action
@@ -1083,10 +1183,14 @@ function handleUndo(event) {
     }
     
     // Update UI and sync with server
-    syncWithServer();
     updateScoreDisplay();
     renderHistory();
     renderStatistics();
+
+    runIncrementalSync(() => boardRequest(`/entries/${entry.id}`, {
+        method: 'DELETE',
+        body: { currentScore }
+    }));
 }
 
 // Reset the score to a specific value
@@ -1105,14 +1209,15 @@ function resetScore() {
     currentScore = newScore;
     
     // Add to history
-    history.push({
+    const resetEntry = {
         id: Date.now().toString(),
         timestamp: new Date().toISOString(),
         reason: 'Manual reset',
         scoreChange,
         newScore: currentScore,
         reasonId: null
-    });
+    };
+    history.push(resetEntry);
     
     // Trim history to prevent payload size issues
     trimHistory();
@@ -1120,13 +1225,20 @@ function resetScore() {
     // Update UI and sync with server
     // Reset to first page to show the new entry
     currentPage = 1;
-    syncWithServer();
     updateScoreDisplay();
     renderHistory();
     renderStatistics();
     
     // Clear the input
     resetScoreValue.value = '';
+
+    runIncrementalSync(() => boardRequest('/entries', {
+        method: 'POST',
+        body: {
+            entry: resetEntry,
+            currentScore
+        }
+    }));
 }
 
 

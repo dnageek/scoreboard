@@ -107,6 +107,24 @@ const ScoreBoardSchema = new mongoose.Schema({
 // Create models
 const ScoreBoard = mongoose.model('ScoreBoard', ScoreBoardSchema);
 
+async function getAuthorizedBoard(syncId, providedPassword) {
+  if (!providedPassword) {
+    return { status: 401, message: 'Password required' };
+  }
+
+  const scoreBoard = await ScoreBoard.findOne({ syncId });
+  if (!scoreBoard) {
+    return { status: 404, message: 'Score board not found' };
+  }
+
+  const passwordMatch = await bcrypt.compare(providedPassword, scoreBoard.password);
+  if (!passwordMatch) {
+    return { status: 401, message: 'Invalid password' };
+  }
+
+  return { scoreBoard };
+}
+
 // API Routes
 // Change password for a board
 app.put('/api/scoreboard/:syncId/password', async (req, res) => {
@@ -281,6 +299,154 @@ app.post('/api/scoreboard', async (req, res) => {
     }
   } catch (err) {
     res.status(400).json({ message: err.message });
+  }
+});
+
+app.post('/api/scoreboard/:syncId/reasons', async (req, res) => {
+  try {
+    const { syncId } = req.params;
+    const authResult = await getAuthorizedBoard(syncId, req.headers['x-password']);
+    if (!authResult.scoreBoard) {
+      return res.status(authResult.status).json({ message: authResult.message });
+    }
+
+    const { reason } = req.body;
+    if (!reason || !reason.id || !reason.text || typeof reason.score !== 'number') {
+      return res.status(400).json({ message: 'A valid reason is required' });
+    }
+
+    authResult.scoreBoard.reasons.push(reason);
+    authResult.scoreBoard.lastUpdated = Date.now();
+    await authResult.scoreBoard.save();
+
+    res.status(201).json({ reason });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.put('/api/scoreboard/:syncId/reasons/reorder', async (req, res) => {
+  try {
+    const { syncId } = req.params;
+    const authResult = await getAuthorizedBoard(syncId, req.headers['x-password']);
+    if (!authResult.scoreBoard) {
+      return res.status(authResult.status).json({ message: authResult.message });
+    }
+
+    const { reasons } = req.body;
+    if (!Array.isArray(reasons)) {
+      return res.status(400).json({ message: 'A reordered reasons array is required' });
+    }
+
+    authResult.scoreBoard.reasons = reasons;
+    authResult.scoreBoard.lastUpdated = Date.now();
+    await authResult.scoreBoard.save();
+
+    res.json({ reasons: authResult.scoreBoard.reasons });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.put('/api/scoreboard/:syncId/reasons/:reasonId', async (req, res) => {
+  try {
+    const { syncId, reasonId } = req.params;
+    const authResult = await getAuthorizedBoard(syncId, req.headers['x-password']);
+    if (!authResult.scoreBoard) {
+      return res.status(authResult.status).json({ message: authResult.message });
+    }
+
+    const { text, score, type } = req.body;
+    const reason = authResult.scoreBoard.reasons.find(entry => entry.id === reasonId);
+    if (!reason) {
+      return res.status(404).json({ message: 'Reason not found' });
+    }
+
+    reason.text = text;
+    reason.score = score;
+    reason.type = type;
+    authResult.scoreBoard.lastUpdated = Date.now();
+    await authResult.scoreBoard.save();
+
+    res.json({ reason });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/scoreboard/:syncId/reasons/:reasonId', async (req, res) => {
+  try {
+    const { syncId, reasonId } = req.params;
+    const authResult = await getAuthorizedBoard(syncId, req.headers['x-password']);
+    if (!authResult.scoreBoard) {
+      return res.status(authResult.status).json({ message: authResult.message });
+    }
+
+    const reasonIndex = authResult.scoreBoard.reasons.findIndex(entry => entry.id === reasonId);
+    if (reasonIndex === -1) {
+      return res.status(404).json({ message: 'Reason not found' });
+    }
+
+    authResult.scoreBoard.reasons.splice(reasonIndex, 1);
+    authResult.scoreBoard.lastUpdated = Date.now();
+    await authResult.scoreBoard.save();
+
+    res.json({ message: 'Reason deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/scoreboard/:syncId/entries', async (req, res) => {
+  try {
+    const { syncId } = req.params;
+    const authResult = await getAuthorizedBoard(syncId, req.headers['x-password']);
+    if (!authResult.scoreBoard) {
+      return res.status(authResult.status).json({ message: authResult.message });
+    }
+
+    const { entry, currentScore } = req.body;
+    if (!entry || !entry.id || typeof currentScore !== 'number') {
+      return res.status(400).json({ message: 'A valid history entry and current score are required' });
+    }
+
+    authResult.scoreBoard.currentScore = currentScore;
+    authResult.scoreBoard.history.push(entry);
+    authResult.scoreBoard.lastUpdated = Date.now();
+    await authResult.scoreBoard.save();
+
+    res.status(201).json({ entry, currentScore: authResult.scoreBoard.currentScore });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/scoreboard/:syncId/entries/:entryId', async (req, res) => {
+  try {
+    const { syncId, entryId } = req.params;
+    const authResult = await getAuthorizedBoard(syncId, req.headers['x-password']);
+    if (!authResult.scoreBoard) {
+      return res.status(authResult.status).json({ message: authResult.message });
+    }
+
+    const { currentScore } = req.body;
+    if (typeof currentScore !== 'number') {
+      return res.status(400).json({ message: 'A valid current score is required' });
+    }
+
+    const entryIndex = authResult.scoreBoard.history.findIndex(entry => entry.id === entryId);
+    if (entryIndex === -1) {
+      return res.status(404).json({ message: 'History entry not found' });
+    }
+
+    authResult.scoreBoard.history.splice(entryIndex, 1);
+    authResult.scoreBoard.currentScore = currentScore;
+    authResult.scoreBoard.lastUpdated = Date.now();
+    await authResult.scoreBoard.save();
+
+    res.json({ message: 'History entry deleted successfully', currentScore });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 
