@@ -367,6 +367,22 @@ h1 {
     color: white;
 }
 
+.delete-reason-btn {
+    background: none;
+    border: 1px solid var(--danger-color);
+    border-radius: 4px;
+    color: var(--danger-color);
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 5px 10px;
+    transition: all 0.3s ease;
+}
+
+.delete-reason-btn:hover {
+    background-color: var(--danger-color);
+    color: white;
+}
+
 .add-btn {
     background-color: rgba(46, 204, 113, 0.1);
 }

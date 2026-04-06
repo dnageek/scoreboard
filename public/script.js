@@ -783,6 +783,7 @@ function renderReasonCards() {
             <div class="card-actions">
                 ${actionButton}
                 <button class="edit-btn" data-id="${reason.id}"><i class="fas fa-edit"></i></button>
+                <button class="delete-reason-btn" data-id="${reason.id}"><i class="fas fa-trash"></i></button>
             </div>
         `;
 
@@ -818,8 +819,16 @@ function renderReasonCards() {
         });
     });
 
+    document.querySelectorAll('.delete-reason-btn').forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const reasonId = button.dataset.id;
+            deleteReason(reasonId);
+        });
+    });
+
     // Prevent button clicks from starting drag operations
-    document.querySelectorAll('.action-btn, .edit-btn').forEach(button => {
+    document.querySelectorAll('.action-btn, .edit-btn, .delete-reason-btn').forEach(button => {
         button.addEventListener('mousedown', (e) => {
             e.stopPropagation();
         });
@@ -1032,6 +1041,23 @@ function saveEdit() {
     syncWithServer();
     renderReasonCards();
     closeModal();
+}
+
+function deleteReason(reasonId) {
+    const reason = reasons.find(r => r.id === reasonId);
+    if (!reason) return;
+
+    const confirmed = confirm(`Remove "${reason.text}" from your score cards?`);
+    if (!confirmed) return;
+
+    reasons = reasons.filter(r => r.id !== reasonId);
+
+    if (selectedReason === reasonId) {
+        selectedReason = null;
+    }
+
+    syncWithServer();
+    renderReasonCards();
 }
 
 // Handle undo action
