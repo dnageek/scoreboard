@@ -65,7 +65,7 @@ let history = [];
 let selectedReason = null;
 let editingReasonId = null;
 let syncId = null;
-let password = null;
+let isAuthenticated = false;
 let savedBoards = {}; // Store multiple board credentials
 let currentBoardId = null;
 let changingPasswordForBoardId = null;
@@ -250,27 +250,26 @@ function init() {
             // Load saved boards
             loadSavedBoards();
 
-            // Check if we have stored credentials in cookies
+            // Clear legacy password storage and use the server's HttpOnly session cookie instead
             syncId = getCookie('scoreBoardSyncId');
-            password = getCookie('scoreBoardPassword');
+            const legacyPassword = getCookie('scoreBoardPassword') || sessionStorage.getItem('scoreBoardPassword');
+            removeCookie('scoreBoardPassword');
+            sessionStorage.removeItem('scoreBoardPassword');
 
-            if (syncId && password) {
-                // Try to load the board using cookie data
-                loadBoardWithCredentials(syncId, password);
+            if (syncId && legacyPassword) {
+                loadBoardWithCredentials(syncId, legacyPassword);
+            } else if (syncId) {
+                loadBoardFromSession(syncId);
             } else {
                 // Fall back to session storage (for backward compatibility)
                 syncId = sessionStorage.getItem('scoreBoardSyncId');
-                password = sessionStorage.getItem('scoreBoardPassword');
 
-                if (syncId && password) {
-                    // Migrate from sessionStorage to cookies
+                if (syncId) {
+                    // Migrate the board ID from sessionStorage to a non-sensitive cookie
                     setCookie('scoreBoardSyncId', syncId);
-                    setCookie('scoreBoardPassword', password);
-                    // Clear sessionStorage
                     sessionStorage.removeItem('scoreBoardSyncId');
-                    sessionStorage.removeItem('scoreBoardPassword');
 
-                    loadBoardWithCredentials(syncId, password);
+                    loadBoardFromSession(syncId);
                 } else {
                     // Load available boards
                     loadAvailableBoards();
@@ -332,7 +331,10 @@ async function loadAvailableBoards() {
         if (err.name === 'AbortError') {
             boardList.innerHTML = '<p>Request timed out. The server might be slow or unreachable.</p>';
         } else {
-            boardList.innerHTML = `<p>Error connecting to server: ${err.message}</p>`;
+            boardList.innerHTML = '';
+            const errorMessage = document.createElement('p');
+            errorMessage.textContent = `Error connecting to server: ${err.message}`;
+            boardList.appendChild(errorMessage);
         }
 
         // Add a retry button
@@ -361,11 +363,16 @@ function renderBoardList(boards) {
         // Format the date
         const lastUpdated = new Date(board.lastUpdated);
         const formattedDate = `${lastUpdated.toLocaleDateString()} ${lastUpdated.toLocaleTimeString()}`;
-        
-        boardItem.innerHTML = `
-            <div class="board-id">${board.syncId}</div>
-            <div class="last-updated">Last updated: ${formattedDate}</div>
-        `;
+
+        const boardIdElement = document.createElement('div');
+        boardIdElement.className = 'board-id';
+        boardIdElement.textContent = board.syncId;
+
+        const lastUpdatedElement = document.createElement('div');
+        lastUpdatedElement.className = 'last-updated';
+        lastUpdatedElement.textContent = `Last updated: ${formattedDate}`;
+
+        boardItem.append(boardIdElement, lastUpdatedElement);
         
         // Click to fill in the board ID in the login form
         boardItem.addEventListener('click', () => {
@@ -381,6 +388,7 @@ function renderBoardList(boards) {
 async function createNewBoard() {
     const newId = newBoardId.value.trim();
     const newPass = newBoardPassword.value.trim();
+    const rememberMe = document.getElementById('remember-login')?.checked ?? true;
 
     if (!newId || !newPass) {
         alert('Please enter both a board ID and password');
@@ -390,12 +398,14 @@ async function createNewBoard() {
     try {
         const response = await fetch(`${API_URL}/scoreboard`, {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
                 syncId: newId,
                 password: newPass,
+                remember: rememberMe,
                 currentScore: 0,
                 reasons: [],
                 history: []
@@ -405,15 +415,14 @@ async function createNewBoard() {
         if (response.ok) {
             // Save credentials and show board
             syncId = newId;
-            password = newPass;
+            isAuthenticated = true;
             currentBoardId = newId;
 
-            // Store credentials in cookies for persistent login
+            // Store only non-sensitive board selection data in readable cookies
             setCookie('scoreBoardSyncId', syncId);
-            setCookie('scoreBoardPassword', password);
             
             // Add to saved boards with initial score
-            addBoardToSaved(newId, newPass, 0);
+            addBoardToSaved(newId, 0);
 
             // Clear any old session storage (for backward compatibility)
             sessionStorage.removeItem('scoreBoardSyncId');
@@ -456,18 +465,83 @@ async function accessExistingBoard() {
     loadBoardWithCredentials(boardId, boardPass);
 }
 
+function applyLoadedBoardData(boardId, data) {
+    // Save board session state. The actual auth token is an HttpOnly cookie set by the server.
+    syncId = boardId;
+    isAuthenticated = true;
+    currentBoardId = boardId;
+
+    // Store only non-sensitive board selection data in readable cookies
+    setCookie('scoreBoardSyncId', syncId);
+    removeCookie('scoreBoardPassword');
+    sessionStorage.removeItem('scoreBoardPassword');
+
+    // Add to saved boards with current score
+    addBoardToSaved(boardId, data.currentScore);
+
+    // Update data
+    currentScore = typeof data.currentScore === 'number' ? data.currentScore : 0;
+    reasons = Array.isArray(data.reasons) ? data.reasons : [];
+    history = Array.isArray(data.history) ? data.history : [];
+
+    // Trim history if it's too large
+    trimHistory();
+
+    // Ensure all reasons have a type
+    ensureReasonTypes();
+
+    // Update UI
+    renderReasonCards();
+    renderHistory();
+    updateScoreDisplay();
+    renderStatistics();
+    showScoreBoardPage();
+}
+
+async function loadBoardFromSession(boardId) {
+    try {
+        const dataResponse = await fetch(`${API_URL}/scoreboard/${boardId}`, {
+            credentials: 'same-origin'
+        });
+
+        if (dataResponse.ok) {
+            const data = await dataResponse.json();
+            applyLoadedBoardData(boardId, data);
+            return true;
+        }
+
+        isAuthenticated = false;
+        if (dataResponse.status === 401) {
+            showLoginPage();
+            loadAvailableBoards();
+            return false;
+        }
+
+        const errorData = await dataResponse.json();
+        alert(`Error loading board: ${errorData.message}`);
+        return false;
+    } catch (err) {
+        alert(`Error loading board: ${err.message}`);
+        return false;
+    }
+}
+
 // Load a board with the given credentials
 async function loadBoardWithCredentials(boardId, boardPass) {
     try {
+        const rememberMe = document.getElementById('remember-login')?.checked ?? true;
+
         // First verify the password
         const verifyResponse = await fetch(`${API_URL}/scoreboard/verify`, {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
                 syncId: boardId,
-                password: boardPass
+                password: boardPass,
+                remember: rememberMe
             })
         });
 
@@ -482,59 +556,25 @@ async function loadBoardWithCredentials(boardId, boardPass) {
             return;
         }
 
-        // Password verified, now load the data
-        const dataResponse = await fetch(`${API_URL}/scoreboard/${boardId}`, {
-            headers: {
-                'X-Password': boardPass
-            }
-        });
-
-        if (dataResponse.ok) {
-            const data = await dataResponse.json();
-
-            // Save credentials
-            syncId = boardId;
-            password = boardPass;
-            currentBoardId = boardId;
-
-            // Store in cookies for persistent login
-            setCookie('scoreBoardSyncId', syncId);
-            setCookie('scoreBoardPassword', password);
-            
-            // Add to saved boards with current score
-            addBoardToSaved(boardId, boardPass, data.currentScore);
-
-            // Update data
-            currentScore = data.currentScore;
-            reasons = data.reasons;
-            history = data.history;
-            
-            // Trim history if it's too large
-            trimHistory();
-
-            // Ensure all reasons have a type
-            ensureReasonTypes();
-
-            // Update UI
-            renderReasonCards();
-            renderHistory();
-            updateScoreDisplay();
-            renderStatistics();
-            showScoreBoardPage();
-        } else {
-            const errorData = await dataResponse.json();
-            alert(`Error loading board: ${errorData.message}`);
-        }
+        await loadBoardFromSession(boardId);
     } catch (err) {
         alert(`Error loading board: ${err.message}`);
     }
 }
 
 // Logout from the current board
-function logout() {
+async function logout() {
+    const boardIdToClear = syncId;
+    if (boardIdToClear && isAuthenticated) {
+        fetch(`${API_URL}/scoreboard/${boardIdToClear}/session`, {
+            method: 'DELETE',
+            credentials: 'same-origin'
+        }).catch(err => console.warn('Failed to clear server session:', err));
+    }
+
     // Clear current board credentials from cookies and session storage
     syncId = null;
-    password = null;
+    isAuthenticated = false;
     currentBoardId = null;
     removeCookie('scoreBoardSyncId');
     removeCookie('scoreBoardPassword');
@@ -568,29 +608,13 @@ async function deleteBoard() {
     }
 
     try {
-        // First verify the password
-        const verifyResponse = await fetch(`${API_URL}/scoreboard/verify`, {
-            method: 'POST',
+        const response = await fetch(`${API_URL}/scoreboard/${syncId}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                syncId,
-                password: deletePassword
-            })
-        });
-
-        if (!verifyResponse.ok) {
-            alert('Incorrect password');
-            return;
-        }
-
-        // Password verified, proceed with deletion
-        const response = await fetch(`${API_URL}/scoreboard/${syncId}`, {
-            method: 'DELETE',
-            headers: {
-                'X-Password': deletePassword
-            }
+            body: JSON.stringify({ password: deletePassword })
         });
 
         if (response.ok) {
@@ -643,17 +667,17 @@ function generateSyncId() {
 
 // Server Sync Functions
 async function boardRequest(path, options = {}) {
-    if (!syncId || !password) {
-        throw new Error('Board credentials are missing');
+    if (!syncId || !isAuthenticated) {
+        throw new Error('Board session is missing');
     }
 
     const headers = {
-        'X-Password': password,
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
         ...(options.headers || {})
     };
     const config = {
         ...options,
+        credentials: 'same-origin',
         headers
     };
 
@@ -686,7 +710,16 @@ async function boardRequest(path, options = {}) {
 
 async function syncWithServer() {
     // If not ready to sync, just mark that sync is needed
-    if (!syncId || !password || offlineMode) return;
+    if (!syncId || !isAuthenticated) return;
+
+    if (offlineMode) {
+        const serverAvailable = await checkServerAvailability();
+        if (!serverAvailable) {
+            setTimeout(syncWithServer, 60000);
+            return;
+        }
+        offlineMode = false;
+    }
     
     // If already syncing, mark that another sync is pending
     if (isSyncing) {
@@ -737,9 +770,9 @@ async function syncWithServer() {
                 
                 const response = await fetch(`${API_URL}/scoreboard`, {
                     method: 'POST',
+                    credentials: 'same-origin',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'X-Password': password
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify(dataToSync),
                     signal: controller.signal
@@ -800,8 +833,21 @@ function updateSyncStatus(message) {
     }
 }
 
+function createIcon(className) {
+    const icon = document.createElement('i');
+    icon.className = className;
+    icon.setAttribute('aria-hidden', 'true');
+    return icon;
+}
+
 async function runIncrementalSync(action, successMessage = 'Synced') {
-    if (!syncId || !password || offlineMode) return false;
+    if (!syncId || !isAuthenticated) return false;
+
+    if (offlineMode) {
+        pendingSync = true;
+        setTimeout(syncWithServer, 1000);
+        return false;
+    }
 
     if (isSyncing) {
         pendingSync = true;
@@ -829,6 +875,9 @@ async function runIncrementalSync(action, successMessage = 'Synced') {
         return false;
     } finally {
         isSyncing = false;
+        if (pendingSync) {
+            setTimeout(syncWithServer, 100);
+        }
     }
 }
 
@@ -847,22 +896,40 @@ function renderReasonCards() {
         card.dataset.id = reason.id;
         card.draggable = true; // Make the card draggable
 
+        const reasonText = document.createElement('p');
+        reasonText.textContent = reason.text;
+
+        const cardActions = document.createElement('div');
+        cardActions.className = 'card-actions';
+
         // Determine what button to show based on the reason type
-        let actionButton = '';
+        const actionButton = document.createElement('button');
+        actionButton.dataset.id = reason.id;
         if (reason.type === REASON_TYPE.ADD) {
-            actionButton = `<button class="action-btn add-btn" data-id="${reason.id}"><i class="fas fa-plus"></i> Add ${reason.score}</button>`;
+            actionButton.className = 'action-btn add-btn';
+            actionButton.appendChild(createIcon('fas fa-plus'));
+            actionButton.appendChild(document.createTextNode(` Add ${reason.score}`));
         } else if (reason.type === REASON_TYPE.SUBTRACT) {
-            actionButton = `<button class="action-btn subtract-btn" data-id="${reason.id}"><i class="fas fa-minus"></i> Subtract ${reason.score}</button>`;
+            actionButton.className = 'action-btn subtract-btn';
+            actionButton.appendChild(createIcon('fas fa-minus'));
+            actionButton.appendChild(document.createTextNode(` Subtract ${reason.score}`));
         }
 
-        card.innerHTML = `
-            <p>${reason.text}</p>
-            <div class="card-actions">
-                ${actionButton}
-                <button class="edit-btn" data-id="${reason.id}"><i class="fas fa-edit"></i></button>
-                <button class="delete-reason-btn" data-id="${reason.id}"><i class="fas fa-trash"></i></button>
-            </div>
-        `;
+        const editButton = document.createElement('button');
+        editButton.className = 'edit-btn';
+        editButton.dataset.id = reason.id;
+        editButton.appendChild(createIcon('fas fa-edit'));
+
+        const deleteButton = document.createElement('button');
+        deleteButton.className = 'delete-reason-btn';
+        deleteButton.dataset.id = reason.id;
+        deleteButton.appendChild(createIcon('fas fa-trash'));
+
+        if (actionButton.className) {
+            cardActions.appendChild(actionButton);
+        }
+        cardActions.append(editButton, deleteButton);
+        card.append(reasonText, cardActions);
 
         // Add drag event listeners
         card.addEventListener('dragstart', handleDragStart);
@@ -946,13 +1013,29 @@ function renderHistory() {
     pageItems.forEach((entry, pageIndex) => {
         const globalIndex = startIndex + pageIndex;
         const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${formatDate(entry.timestamp)}</td>
-            <td>${entry.reason}</td>
-            <td class="${entry.scoreChange > 0 ? 'positive' : 'negative'}">${entry.scoreChange > 0 ? '+' : ''}${entry.scoreChange}</td>
-            <td>${entry.newScore}</td>
-            <td><button class="undo-btn" data-index="${globalIndex}"><i class="fas fa-undo"></i> Undo</button></td>
-        `;
+
+        const dateCell = document.createElement('td');
+        dateCell.textContent = formatDate(entry.timestamp);
+
+        const reasonCell = document.createElement('td');
+        reasonCell.textContent = entry.reason;
+
+        const changeCell = document.createElement('td');
+        changeCell.className = entry.scoreChange > 0 ? 'positive' : 'negative';
+        changeCell.textContent = `${entry.scoreChange > 0 ? '+' : ''}${entry.scoreChange}`;
+
+        const newScoreCell = document.createElement('td');
+        newScoreCell.textContent = entry.newScore;
+
+        const actionsCell = document.createElement('td');
+        const undoButton = document.createElement('button');
+        undoButton.className = 'undo-btn';
+        undoButton.dataset.index = globalIndex;
+        undoButton.appendChild(createIcon('fas fa-undo'));
+        undoButton.appendChild(document.createTextNode(' Undo'));
+        actionsCell.appendChild(undoButton);
+
+        row.append(dateCell, reasonCell, changeCell, newScoreCell, actionsCell);
         historyTable.appendChild(row);
     });
     
@@ -986,6 +1069,25 @@ function formatDate(timestamp) {
 function selectReason(id) {
     selectedReason = selectedReason === id ? null : id;
     renderReasonCards();
+}
+
+function reconcileEntrySync(localEntryId, result) {
+    if (!result) return;
+
+    if (result.entry) {
+        const entryIndex = history.findIndex(entry => entry.id === localEntryId);
+        if (entryIndex !== -1) {
+            history[entryIndex] = result.entry;
+        }
+    }
+
+    if (typeof result.currentScore === 'number') {
+        currentScore = result.currentScore;
+    }
+
+    updateScoreDisplay();
+    renderHistory();
+    renderStatistics();
 }
 
 function addReason() {
@@ -1074,13 +1176,16 @@ function updateScoreByReasonId(reasonId, isAddition) {
     renderHistory();
     renderStatistics();
 
-    runIncrementalSync(() => boardRequest('/entries', {
-        method: 'POST',
-        body: {
-            entry: newEntry,
-            currentScore
-        }
-    }));
+    runIncrementalSync(async () => {
+        const result = await boardRequest('/entries', {
+            method: 'POST',
+            body: {
+                entry: newEntry,
+                currentScore
+            }
+        });
+        reconcileEntrySync(newEntry.id, result);
+    });
 }
 
 function openEditModal(reasonId) {
@@ -1187,10 +1292,18 @@ function handleUndo(event) {
     renderHistory();
     renderStatistics();
 
-    runIncrementalSync(() => boardRequest(`/entries/${entry.id}`, {
-        method: 'DELETE',
-        body: { currentScore }
-    }));
+    runIncrementalSync(async () => {
+        const result = await boardRequest(`/entries/${entry.id}`, {
+            method: 'DELETE',
+            body: { currentScore }
+        });
+        if (result && typeof result.currentScore === 'number') {
+            currentScore = result.currentScore;
+            updateScoreDisplay();
+            renderHistory();
+            renderStatistics();
+        }
+    });
 }
 
 // Reset the score to a specific value
@@ -1232,13 +1345,16 @@ function resetScore() {
     // Clear the input
     resetScoreValue.value = '';
 
-    runIncrementalSync(() => boardRequest('/entries', {
-        method: 'POST',
-        body: {
-            entry: resetEntry,
-            currentScore
-        }
-    }));
+    runIncrementalSync(async () => {
+        const result = await boardRequest('/entries', {
+            method: 'POST',
+            body: {
+                entry: resetEntry,
+                currentScore
+            }
+        });
+        reconcileEntrySync(resetEntry.id, result);
+    });
 }
 
 
@@ -1316,7 +1432,10 @@ function showChangePasswordModal(boardId) {
     // Update modal title to show which board
     const modalTitle = changePasswordModal.querySelector('h3');
     if (modalTitle) {
-        modalTitle.innerHTML = `<i class="fas fa-key"></i> Change Password for "${boardId}"`;
+        modalTitle.replaceChildren(
+            createIcon('fas fa-key'),
+            document.createTextNode(` Change Password for "${boardId}"`)
+        );
     }
 
     // Show the modal
@@ -1356,26 +1475,22 @@ async function changePassword() {
 
         const response = await fetch(`${API_URL}/scoreboard/${changingPasswordForBoardId}/password`, {
             method: 'PUT',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
                 currentPassword,
-                newPassword
+                newPassword,
+                remember: document.getElementById('remember-login')?.checked ?? true
             })
         });
 
         if (response.ok) {
-            // Update stored password in saved boards
-            if (savedBoards[changingPasswordForBoardId]) {
-                savedBoards[changingPasswordForBoardId].password = newPassword;
-                saveBoardsToStorage();
-            }
-            
             // If this is the currently active board, update global password too
             if (changingPasswordForBoardId === currentBoardId) {
-                password = newPassword;
-                setCookie('scoreBoardPassword', password);
+                isAuthenticated = true;
+                removeCookie('scoreBoardPassword');
                 sessionStorage.removeItem('scoreBoardPassword');
             }
 
@@ -1572,16 +1687,19 @@ function updateStatsSummary(filteredHistory) {
 }
 
 function renderScoreTrendChart(filteredHistory) {
-    const ctx = document.getElementById('score-trend-chart').getContext('2d');
-    
     if (charts.scoreTrend) {
         charts.scoreTrend.destroy();
+        charts.scoreTrend = null;
     }
     
     if (filteredHistory.length === 0) {
         showNoDataMessage('score-trend-chart');
         return;
     }
+
+    const canvas = prepareChartCanvas('score-trend-chart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
     
     // Sort by timestamp and prepare data
     const sortedHistory = [...filteredHistory].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
@@ -1632,16 +1750,19 @@ function renderScoreTrendChart(filteredHistory) {
 }
 
 function renderActivityChart(filteredHistory) {
-    const ctx = document.getElementById('activity-chart').getContext('2d');
-    
     if (charts.activity) {
         charts.activity.destroy();
+        charts.activity = null;
     }
     
     if (filteredHistory.length === 0) {
         showNoDataMessage('activity-chart');
         return;
     }
+
+    const canvas = prepareChartCanvas('activity-chart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
     
     // Group by date and separate positive/negative activities
     const activityByDate = {};
@@ -1734,9 +1855,11 @@ function renderReasonUsageChart(filteredHistory) {
     // Clean up existing charts
     if (charts.positiveReasons) {
         charts.positiveReasons.destroy();
+        charts.positiveReasons = null;
     }
     if (charts.negativeReasons) {
         charts.negativeReasons.destroy();
+        charts.negativeReasons = null;
     }
     
     if (filteredHistory.length === 0) {
@@ -1757,12 +1880,14 @@ function renderReasonUsageChart(filteredHistory) {
 }
 
 function renderPositiveReasonChart(positiveEntries) {
-    const ctx = document.getElementById('positive-reason-chart').getContext('2d');
-    
     if (positiveEntries.length === 0) {
         showNoDataMessage('positive-reason-chart');
         return;
     }
+
+    const canvas = prepareChartCanvas('positive-reason-chart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
     
     // Group by reason
     const reasonCounts = {};
@@ -1816,12 +1941,14 @@ function renderPositiveReasonChart(positiveEntries) {
 }
 
 function renderNegativeReasonChart(negativeEntries) {
-    const ctx = document.getElementById('negative-reason-chart').getContext('2d');
-    
     if (negativeEntries.length === 0) {
         showNoDataMessage('negative-reason-chart');
         return;
     }
+
+    const canvas = prepareChartCanvas('negative-reason-chart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
     
     // Group by reason
     const reasonCounts = {};
@@ -1875,15 +2002,39 @@ function renderNegativeReasonChart(negativeEntries) {
 }
 
 
+function prepareChartCanvas(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return null;
+
+    const wrapper = canvas.parentElement;
+    canvas.style.display = '';
+
+    const existingMessage = wrapper.querySelector('.no-data-message');
+    if (existingMessage) {
+        existingMessage.remove();
+    }
+
+    return canvas;
+}
+
 function showNoDataMessage(canvasId) {
     const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
     const wrapper = canvas.parentElement;
-    wrapper.innerHTML = `
-        <div class="no-data-message">
-            <i class="fas fa-chart-line"></i>
-            <p>No data available for the selected time period</p>
-        </div>
-    `;
+    canvas.style.display = 'none';
+
+    let message = wrapper.querySelector('.no-data-message');
+    if (!message) {
+        message = document.createElement('div');
+        message.className = 'no-data-message';
+        message.appendChild(createIcon('fas fa-chart-line'));
+
+        const text = document.createElement('p');
+        text.textContent = 'No data available for the selected time period';
+        message.appendChild(text);
+        wrapper.appendChild(message);
+    }
 }
 
 function renderStatistics() {
@@ -1922,6 +2073,17 @@ function loadSavedBoards() {
     if (saved) {
         try {
             savedBoards = JSON.parse(saved);
+            if (!savedBoards || typeof savedBoards !== 'object' || Array.isArray(savedBoards)) {
+                savedBoards = {};
+            }
+            Object.entries(savedBoards).forEach(([boardId, board]) => {
+                if (!board || typeof board !== 'object') {
+                    delete savedBoards[boardId];
+                    return;
+                }
+                delete board.password;
+            });
+            saveBoardsToStorage();
         } catch (e) {
             savedBoards = {};
         }
@@ -1933,7 +2095,7 @@ function saveBoardsToStorage() {
     setCookie('savedBoards', JSON.stringify(savedBoards));
 }
 
-function addBoardToSaved(boardId, boardPassword, score = 0) {
+function addBoardToSaved(boardId, score = 0) {
     // Generate a color for the board based on board ID
     const colors = [
         '#4a6fa5', '#e74c3c', '#2ecc71', '#f39c12', 
@@ -1942,7 +2104,6 @@ function addBoardToSaved(boardId, boardPassword, score = 0) {
     const colorIndex = boardId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
     
     savedBoards[boardId] = {
-        password: boardPassword,
         lastAccessed: new Date().toISOString(),
         currentScore: score,
         color: colors[colorIndex]
@@ -1964,33 +2125,56 @@ function updateBoardCards() {
     Object.entries(savedBoards).forEach(([boardId, boardData]) => {
         const card = document.createElement('div');
         card.className = `board-card ${boardId === currentBoardId ? 'active' : ''}`;
-        card.style.borderLeftColor = boardData.color;
+        const color = /^#[0-9A-Fa-f]{6}$/.test(boardData.color) ? boardData.color : '#4a6fa5';
+        card.style.borderLeftColor = color;
         
         const lastAccessed = new Date(boardData.lastAccessed);
         const timeAgo = getTimeAgo(lastAccessed);
-        
-        card.innerHTML = `
-            <div class="board-card-header">
-                <div class="board-icon" style="background-color: ${boardData.color}">
-                    <i class="fas fa-clipboard-list"></i>
-                </div>
-                <div class="board-info">
-                    <h4 class="board-name">${boardId}</h4>
-                    <p class="board-score">Score: ${boardData.currentScore || 0}</p>
-                </div>
-                <div class="board-actions">
-                    <button class="board-action-btn board-settings-btn" data-board="${boardId}" title="Change password">
-                        <i class="fas fa-cog"></i>
-                    </button>
-                    <button class="board-action-btn board-remove-btn" data-board="${boardId}" title="Remove from saved boards">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="board-card-footer">
-                <span class="last-accessed">Last accessed: ${timeAgo}</span>
-            </div>
-        `;
+
+        const header = document.createElement('div');
+        header.className = 'board-card-header';
+
+        const icon = document.createElement('div');
+        icon.className = 'board-icon';
+        icon.style.backgroundColor = color;
+        icon.appendChild(createIcon('fas fa-clipboard-list'));
+
+        const info = document.createElement('div');
+        info.className = 'board-info';
+        const name = document.createElement('h4');
+        name.className = 'board-name';
+        name.textContent = boardId;
+        const score = document.createElement('p');
+        score.className = 'board-score';
+        score.textContent = `Score: ${boardData.currentScore || 0}`;
+        info.append(name, score);
+
+        const actions = document.createElement('div');
+        actions.className = 'board-actions';
+
+        const settingsButton = document.createElement('button');
+        settingsButton.className = 'board-action-btn board-settings-btn';
+        settingsButton.dataset.board = boardId;
+        settingsButton.title = 'Change password';
+        settingsButton.appendChild(createIcon('fas fa-cog'));
+
+        const removeButton = document.createElement('button');
+        removeButton.className = 'board-action-btn board-remove-btn';
+        removeButton.dataset.board = boardId;
+        removeButton.title = 'Remove from saved boards';
+        removeButton.appendChild(createIcon('fas fa-times'));
+
+        actions.append(settingsButton, removeButton);
+        header.append(icon, info, actions);
+
+        const footer = document.createElement('div');
+        footer.className = 'board-card-footer';
+        const lastAccessedElement = document.createElement('span');
+        lastAccessedElement.className = 'last-accessed';
+        lastAccessedElement.textContent = `Last accessed: ${timeAgo}`;
+        footer.appendChild(lastAccessedElement);
+
+        card.append(header, footer);
         
         // Add click event to switch boards
         card.addEventListener('click', (e) => {
@@ -2038,9 +2222,13 @@ function removeBoardFromSaved(boardId) {
 
 function switchToBoard(boardId) {
     if (!savedBoards[boardId]) return;
-    
-    const boardData = savedBoards[boardId];
-    loadBoardWithCredentials(boardId, boardData.password);
+
+    loadBoardFromSession(boardId).then(loaded => {
+        if (!loaded) {
+            existingBoardId.value = boardId;
+            existingBoardPassword.focus();
+        }
+    });
 }
 
 // Initialize the app when the DOM is loaded
