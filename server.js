@@ -205,6 +205,33 @@ function sanitizeHistoryEntry(entry) {
   return sanitized;
 }
 
+function isManualResetEntry(entry) {
+  return entry.reason === 'Manual reset' && entry.reasonId === null && isFiniteNumber(entry.newScore);
+}
+
+function synchronizeBoardHistory(scoreBoard) {
+  const sortedHistory = [...(scoreBoard.history || [])].sort((a, b) => (
+    new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  ));
+
+  let runningScore = 0;
+  scoreBoard.history = sortedHistory.map(entry => {
+    const nextEntry = entry.toObject ? entry.toObject() : { ...entry };
+
+    if (isManualResetEntry(nextEntry)) {
+      nextEntry.scoreChange = nextEntry.newScore - runningScore;
+      runningScore = nextEntry.newScore;
+    } else {
+      runningScore += nextEntry.scoreChange;
+      nextEntry.newScore = runningScore;
+    }
+
+    return nextEntry;
+  });
+
+  scoreBoard.currentScore = runningScore;
+}
+
 // MongoDB connection with options
 const connectDB = async () => {
   try {
@@ -216,8 +243,6 @@ const connectDB = async () => {
     }
 
     await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000
     });
     console.log('Connected to MongoDB Atlas successfully');
@@ -373,9 +398,6 @@ app.get('/api/scoreboard/test-connection', (req, res) => {
 // Get all available boards (without sensitive data)
 app.get('/api/scoreboards', async (req, res) => {
   try {
-    // Add artificial delay to prevent race conditions in the UI
-    await new Promise(resolve => setTimeout(resolve, 500));
-
     const boards = await ScoreBoard.find({}, 'syncId lastUpdated');
     res.json(boards);
   } catch (err) {
@@ -433,7 +455,9 @@ app.get('/api/scoreboard/:syncId', async (req, res) => {
     }
 
     if (hasValidSession(req, scoreBoard, req.params.syncId)) {
-      await scoreBoard.save();
+      if (pruneExpiredSessions(scoreBoard)) {
+        await scoreBoard.save();
+      }
       return res.json(publicBoardPayload(scoreBoard));
     }
     
@@ -650,47 +674,23 @@ app.post('/api/scoreboard/:syncId/entries', async (req, res) => {
     }
 
     const isResetEntry = sanitizedEntry.reason === 'Manual reset' && sanitizedEntry.reasonId === null;
-    const now = new Date();
+    const previousScore = authResult.scoreBoard.currentScore;
+    const entryToStore = { ...sanitizedEntry };
 
-    const scoreExpression = isResetEntry
-      ? targetScore
-      : { $add: ['$currentScore', sanitizedEntry.scoreChange] };
-
-    const scoreChangeExpression = isResetEntry
-      ? { $subtract: [targetScore, '$currentScore'] }
-      : sanitizedEntry.scoreChange;
-
-    const entryToStore = {
-      ...sanitizedEntry,
-      scoreChange: scoreChangeExpression,
-      newScore: scoreExpression
-    };
-
-    const result = await ScoreBoard.findOneAndUpdate(
-      { _id: authResult.scoreBoard._id },
-      [
-        {
-          $set: {
-            currentScore: scoreExpression,
-            history: {
-              $concatArrays: [
-                { $ifNull: ['$history', []] },
-                [entryToStore]
-              ]
-            },
-            lastUpdated: now
-          }
-        }
-      ],
-      { new: true }
-    );
-
-    if (!result) {
-      return res.status(404).json({ message: 'Score board not found' });
+    if (isResetEntry) {
+      entryToStore.scoreChange = targetScore - previousScore;
+      entryToStore.newScore = targetScore;
+      authResult.scoreBoard.currentScore = targetScore;
+    } else {
+      authResult.scoreBoard.currentScore += entryToStore.scoreChange;
+      entryToStore.newScore = authResult.scoreBoard.currentScore;
     }
 
-    const savedEntry = result.history[result.history.length - 1];
-    res.status(201).json({ entry: savedEntry, currentScore: result.currentScore });
+    authResult.scoreBoard.history.push(entryToStore);
+    authResult.scoreBoard.lastUpdated = Date.now();
+    await authResult.scoreBoard.save();
+
+    res.status(201).json({ entry: entryToStore, currentScore: authResult.scoreBoard.currentScore });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -704,27 +704,21 @@ app.delete('/api/scoreboard/:syncId/entries/:entryId', async (req, res) => {
       return res.status(authResult.status).json({ message: authResult.message });
     }
 
-    const entry = authResult.scoreBoard.history.find(entry => entry.id === entryId);
     const entryIndex = authResult.scoreBoard.history.findIndex(entry => entry.id === entryId);
     if (entryIndex === -1) {
       return res.status(404).json({ message: 'History entry not found' });
     }
 
-    const result = await ScoreBoard.findOneAndUpdate(
-      { _id: authResult.scoreBoard._id, 'history.id': entryId },
-      {
-        $inc: { currentScore: -entry.scoreChange },
-        $pull: { history: { id: entryId } },
-        $set: { lastUpdated: Date.now() }
-      },
-      { new: true }
-    );
+    authResult.scoreBoard.history.splice(entryIndex, 1);
+    synchronizeBoardHistory(authResult.scoreBoard);
+    authResult.scoreBoard.lastUpdated = Date.now();
+    await authResult.scoreBoard.save();
 
-    if (!result) {
-      return res.status(404).json({ message: 'History entry not found' });
-    }
-
-    res.json({ message: 'History entry deleted successfully', currentScore: result.currentScore });
+    res.json({
+      message: 'History entry deleted successfully',
+      currentScore: authResult.scoreBoard.currentScore,
+      history: authResult.scoreBoard.history
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

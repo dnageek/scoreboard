@@ -1090,6 +1090,31 @@ function reconcileEntrySync(localEntryId, result) {
     renderStatistics();
 }
 
+function isManualResetEntry(entry) {
+    return entry.reason === 'Manual reset' && entry.reasonId === null && typeof entry.newScore === 'number';
+}
+
+function recalculateHistoryState() {
+    const sortedHistory = [...history].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    let runningScore = 0;
+
+    history = sortedHistory.map(entry => {
+        const normalizedEntry = { ...entry };
+
+        if (isManualResetEntry(normalizedEntry)) {
+            normalizedEntry.scoreChange = normalizedEntry.newScore - runningScore;
+            runningScore = normalizedEntry.newScore;
+        } else {
+            runningScore += normalizedEntry.scoreChange;
+            normalizedEntry.newScore = runningScore;
+        }
+
+        return normalizedEntry;
+    });
+
+    currentScore = runningScore;
+}
+
 function addReason() {
     const text = newReasonText.value.trim();
     const score = parseInt(newReasonScore.value);
@@ -1272,14 +1297,13 @@ function handleUndo(event) {
     
     if (!entry) return;
     
-    // Reverse the score change
-    currentScore -= entry.scoreChange;
-    
     // Remove this entry from history
     const entryIndex = history.findIndex(h => h.id === entry.id);
     if (entryIndex !== -1) {
         history.splice(entryIndex, 1);
     }
+
+    recalculateHistoryState();
     
     // Check if we need to go to previous page (if current page becomes empty)
     const totalPages = Math.ceil(history.length / itemsPerPage);
@@ -1297,8 +1321,16 @@ function handleUndo(event) {
             method: 'DELETE',
             body: { currentScore }
         });
-        if (result && typeof result.currentScore === 'number') {
-            currentScore = result.currentScore;
+        if (result) {
+            if (Array.isArray(result.history)) {
+                history = result.history;
+            }
+            if (typeof result.currentScore === 'number') {
+                currentScore = result.currentScore;
+            }
+            if (!Array.isArray(result.history)) {
+                recalculateHistoryState();
+            }
             updateScoreDisplay();
             renderHistory();
             renderStatistics();
@@ -1640,27 +1672,28 @@ function calculateStatistics(filteredHistory) {
         };
     }
     
-    const positiveChanges = filteredHistory.filter(entry => entry.scoreChange > 0);
-    const negativeChanges = filteredHistory.filter(entry => entry.scoreChange < 0);
+    const sortedHistory = [...filteredHistory].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const positiveChanges = sortedHistory.filter(entry => entry.scoreChange > 0);
+    const negativeChanges = sortedHistory.filter(entry => entry.scoreChange < 0);
     
     // Calculate average daily change
-    const totalChange = filteredHistory.reduce((sum, entry) => sum + entry.scoreChange, 0);
-    const firstEntry = new Date(filteredHistory[filteredHistory.length - 1].timestamp);
-    const lastEntry = new Date(filteredHistory[0].timestamp);
+    const totalChange = sortedHistory.reduce((sum, entry) => sum + entry.scoreChange, 0);
+    const firstEntry = new Date(sortedHistory[0].timestamp);
+    const lastEntry = new Date(sortedHistory[sortedHistory.length - 1].timestamp);
     const daysDiff = Math.max(1, Math.ceil((lastEntry - firstEntry) / (1000 * 60 * 60 * 24)));
     const avgDailyChange = totalChange / daysDiff;
     
     // Calculate win/loss ratio
-    const winRate = filteredHistory.length > 0 ? (positiveChanges.length / filteredHistory.length) * 100 : 0;
+    const winRate = sortedHistory.length > 0 ? (positiveChanges.length / sortedHistory.length) * 100 : 0;
     
     // Calculate score range
-    const scores = filteredHistory.map(entry => entry.newScore);
+    const scores = sortedHistory.map(entry => entry.newScore);
     const minScore = Math.min(...scores);
     const maxScore = Math.max(...scores);
     const scoreRange = maxScore - minScore;
     
     return {
-        totalEntries: filteredHistory.length,
+        totalEntries: sortedHistory.length,
         avgDailyChange: avgDailyChange,
         winLossRatio: winRate,
         scoreRange: scoreRange
