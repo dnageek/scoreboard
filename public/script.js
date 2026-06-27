@@ -85,7 +85,9 @@ function trimHistory() {
         // Sort by timestamp to ensure we keep the most recent entries
         history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         // Keep only the most recent entries
-        history = history.slice(0, MAX_HISTORY_ENTRIES);
+        history = history
+            .slice(0, MAX_HISTORY_ENTRIES)
+            .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         console.log(`History trimmed to ${MAX_HISTORY_ENTRIES} entries`);
     }
 }
@@ -96,6 +98,8 @@ let currentStatsFilter = 'all';
 let charts = {};
 // Always use relative path for API URL to work across devices
 const API_URL = '/api';
+
+let clientIdCounter = 0;
 
 // Constants for reason types
 const REASON_TYPE = {
@@ -113,6 +117,15 @@ function ensureReasonTypes() {
             reason.score = Math.abs(reason.score);
         }
     });
+}
+
+function generateClientId(prefix = 'id') {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return `${prefix}-${window.crypto.randomUUID()}`;
+    }
+
+    clientIdCounter += 1;
+    return `${prefix}-${Date.now()}-${clientIdCounter}`;
 }
 
 // Drag and Drop functionality
@@ -486,6 +499,10 @@ function applyLoadedBoardData(boardId, data) {
 
     // Trim history if it's too large
     trimHistory();
+
+    if (history.length > 0) {
+        recalculateHistoryState();
+    }
 
     // Ensure all reasons have a type
     ensureReasonTypes();
@@ -1085,6 +1102,10 @@ function reconcileEntrySync(localEntryId, result) {
         currentScore = result.currentScore;
     }
 
+    if (history.length > 0) {
+        recalculateHistoryState();
+    }
+
     updateScoreDisplay();
     renderHistory();
     renderStatistics();
@@ -1096,6 +1117,13 @@ function isManualResetEntry(entry) {
 
 function recalculateHistoryState() {
     const sortedHistory = [...history].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+    if (sortedHistory.length === 0) {
+        history = [];
+        currentScore = 0;
+        return;
+    }
+
     let runningScore = 0;
 
     history = sortedHistory.map(entry => {
@@ -1132,7 +1160,7 @@ function addReason() {
     }
 
     const newReason = {
-        id: Date.now().toString(),
+        id: generateClientId('reason'),
         text,
         score,  // Store positive value
         type    // Store the explicitly selected type
@@ -1162,6 +1190,10 @@ function updateScoreByReasonId(reasonId, isAddition) {
     const reason = reasons.find(r => r.id === reasonId);
     if (!reason) return;
 
+    if (history.length > 0) {
+        recalculateHistoryState();
+    }
+
     // Apply score change based on reason type
     let scoreChange;
 
@@ -1183,7 +1215,7 @@ function updateScoreByReasonId(reasonId, isAddition) {
 
     // Add to history with unique ID
     const newEntry = {
-        id: Date.now().toString(),
+        id: generateClientId('entry'),
         timestamp: new Date().toISOString(),
         reason: reason.text,
         scoreChange,
@@ -1346,6 +1378,10 @@ function resetScore() {
         alert('Please enter a valid score value');
         return;
     }
+
+    if (history.length > 0) {
+        recalculateHistoryState();
+    }
     
     // Calculate the score change
     const scoreChange = newScore - currentScore;
@@ -1355,7 +1391,7 @@ function resetScore() {
     
     // Add to history
     const resetEntry = {
-        id: Date.now().toString(),
+        id: generateClientId('entry'),
         timestamp: new Date().toISOString(),
         reason: 'Manual reset',
         scoreChange,

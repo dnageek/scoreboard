@@ -214,6 +214,12 @@ function synchronizeBoardHistory(scoreBoard) {
     new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
   ));
 
+  if (sortedHistory.length === 0) {
+    scoreBoard.history = [];
+    scoreBoard.currentScore = isFiniteNumber(scoreBoard.currentScore) ? scoreBoard.currentScore : 0;
+    return;
+  }
+
   let runningScore = 0;
   scoreBoard.history = sortedHistory.map(entry => {
     const nextEntry = entry.toObject ? entry.toObject() : { ...entry };
@@ -496,6 +502,15 @@ app.post('/api/scoreboard', async (req, res) => {
     if (sanitizedReasons.some(reason => !reason) || sanitizedHistory.some(entry => !entry)) {
       return res.status(400).json({ message: 'Score board data is invalid' });
     }
+
+    const normalizedBoardState = {
+      currentScore: sanitizedCurrentScore,
+      history: sanitizedHistory
+    };
+
+    if (normalizedBoardState.history.length > 0) {
+      synchronizeBoardHistory(normalizedBoardState);
+    }
     
     // Check if this is an update or a new board
     const existingBoard = await ScoreBoard.findOne({ syncId });
@@ -520,9 +535,9 @@ app.post('/api/scoreboard', async (req, res) => {
         { syncId },
         { 
           syncId,
-          currentScore: sanitizedCurrentScore,
+          currentScore: normalizedBoardState.currentScore,
           reasons: sanitizedReasons,
-          history: sanitizedHistory,
+          history: normalizedBoardState.history,
           lastUpdated: Date.now()
         },
         { new: true, runValidators: true }
@@ -541,9 +556,9 @@ app.post('/api/scoreboard', async (req, res) => {
       const newBoard = new ScoreBoard({
         syncId,
         password: hashedPassword,
-        currentScore: sanitizedCurrentScore,
+        currentScore: normalizedBoardState.currentScore,
         reasons: sanitizedReasons,
-        history: sanitizedHistory,
+        history: normalizedBoardState.history,
         lastUpdated: Date.now()
       });
 
@@ -687,10 +702,13 @@ app.post('/api/scoreboard/:syncId/entries', async (req, res) => {
     }
 
     authResult.scoreBoard.history.push(entryToStore);
+    synchronizeBoardHistory(authResult.scoreBoard);
     authResult.scoreBoard.lastUpdated = Date.now();
     await authResult.scoreBoard.save();
 
-    res.status(201).json({ entry: entryToStore, currentScore: authResult.scoreBoard.currentScore });
+    const savedEntry = authResult.scoreBoard.history.find(entry => entry.id === entryToStore.id) || entryToStore;
+
+    res.status(201).json({ entry: savedEntry, currentScore: authResult.scoreBoard.currentScore });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
