@@ -216,7 +216,7 @@ function synchronizeBoardHistory(scoreBoard) {
 
   if (sortedHistory.length === 0) {
     scoreBoard.history = [];
-    scoreBoard.currentScore = isFiniteNumber(scoreBoard.currentScore) ? scoreBoard.currentScore : 0;
+    scoreBoard.currentScore = 0;
     return;
   }
 

@@ -72,6 +72,7 @@ let changingPasswordForBoardId = null;
 let isSyncing = false;
 let offlineMode = false;
 let pendingSync = false;
+let incrementalSyncQueue = [];
 // Pagination state
 let currentPage = 1;
 const itemsPerPage = 10;
@@ -729,6 +730,14 @@ async function syncWithServer() {
     // If not ready to sync, just mark that sync is needed
     if (!syncId || !isAuthenticated) return;
 
+    if (incrementalSyncQueue.length > 0) {
+        pendingSync = true;
+        if (!isSyncing) {
+            setTimeout(processIncrementalSyncQueue, 0);
+        }
+        return;
+    }
+
     if (offlineMode) {
         const serverAvailable = await checkServerAvailability();
         if (!serverAvailable) {
@@ -857,6 +866,66 @@ function createIcon(className) {
     return icon;
 }
 
+async function processIncrementalSyncQueue() {
+    if (isSyncing || incrementalSyncQueue.length === 0) {
+        return;
+    }
+
+    if (offlineMode) {
+        pendingSync = true;
+        setTimeout(syncWithServer, 1000);
+        return;
+    }
+
+    let processedAny = false;
+
+    try {
+        isSyncing = true;
+        updateSyncStatus('Syncing...');
+
+        while (incrementalSyncQueue.length > 0) {
+            const nextSync = incrementalSyncQueue[0];
+
+            try {
+                await nextSync.action();
+                processedAny = true;
+                offlineMode = false;
+                incrementalSyncQueue.shift();
+                nextSync.resolve(true);
+            } catch (err) {
+                nextSync.resolve(false);
+
+                if (err.message.includes('Failed to fetch') || err.name === 'AbortError') {
+                    offlineMode = true;
+                    updateSyncStatus('Cannot connect to server. Try again later.');
+                } else {
+                    updateSyncStatus(`Sync error: ${err.message}. Will retry full sync.`);
+                }
+
+                pendingSync = true;
+                setTimeout(syncWithServer, 1000);
+                break;
+            }
+        }
+
+        if (!offlineMode && processedAny) {
+            updateSyncStatus('Synced');
+            setTimeout(() => updateSyncStatus(''), 3000);
+        }
+    } finally {
+        isSyncing = false;
+
+        if (!offlineMode && incrementalSyncQueue.length > 0) {
+            setTimeout(processIncrementalSyncQueue, 0);
+            return;
+        }
+
+        if (pendingSync) {
+            setTimeout(syncWithServer, 100);
+        }
+    }
+}
+
 async function runIncrementalSync(action, successMessage = 'Synced') {
     if (!syncId || !isAuthenticated) return false;
 
@@ -866,36 +935,17 @@ async function runIncrementalSync(action, successMessage = 'Synced') {
         return false;
     }
 
-    if (isSyncing) {
-        pendingSync = true;
-        return false;
-    }
+    return new Promise(resolve => {
+        incrementalSyncQueue.push({
+            action,
+            resolve,
+            successMessage
+        });
 
-    try {
-        isSyncing = true;
-        pendingSync = false;
-        updateSyncStatus('Syncing...');
-        await action();
-        offlineMode = false;
-        updateSyncStatus(successMessage);
-        setTimeout(() => updateSyncStatus(''), 3000);
-        return true;
-    } catch (err) {
-        if (err.message.includes('Failed to fetch') || err.name === 'AbortError') {
-            offlineMode = true;
-            updateSyncStatus('Cannot connect to server. Try again later.');
-        } else {
-            updateSyncStatus(`Sync error: ${err.message}. Will retry full sync.`);
+        if (!isSyncing) {
+            setTimeout(processIncrementalSyncQueue, 0);
         }
-        pendingSync = true;
-        setTimeout(syncWithServer, 1000);
-        return false;
-    } finally {
-        isSyncing = false;
-        if (pendingSync) {
-            setTimeout(syncWithServer, 100);
-        }
-    }
+    });
 }
 
 // Render Functions
