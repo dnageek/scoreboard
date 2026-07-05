@@ -1120,10 +1120,7 @@ function updateScoreDisplay() {
     
     // Update score in saved boards
     if (currentBoardId && savedBoards[currentBoardId]) {
-        savedBoards[currentBoardId].currentScore = currentScore;
-        savedBoards[currentBoardId].lastAccessed = new Date().toISOString();
-        saveBoardsToStorage();
-        updateBoardCards();
+        markBoardAsRecentlyActive(currentBoardId, currentScore);
     }
 }
 
@@ -2231,6 +2228,19 @@ function addBoardToSaved(boardId, score = 0) {
     updateBoardCards();
 }
 
+function markBoardAsRecentlyActive(boardId, score = null) {
+    if (!boardId || !savedBoards[boardId]) return;
+
+    savedBoards[boardId].lastAccessed = new Date().toISOString();
+
+    if (typeof score === 'number') {
+        savedBoards[boardId].currentScore = score;
+    }
+
+    saveBoardsToStorage();
+    updateBoardCards();
+}
+
 function updateBoardCards() {
     if (!boardCardsContainer) return;
     
@@ -2241,7 +2251,11 @@ function updateBoardCards() {
         return;
     }
     
-    Object.entries(savedBoards).forEach(([boardId, boardData]) => {
+    Object.entries(savedBoards)
+        .sort(([, leftBoard], [, rightBoard]) => (
+            new Date(rightBoard.lastAccessed || 0) - new Date(leftBoard.lastAccessed || 0)
+        ))
+        .forEach(([boardId, boardData]) => {
         const card = document.createElement('div');
         card.className = `board-card ${boardId === currentBoardId ? 'active' : ''}`;
         const color = /^#[0-9A-Fa-f]{6}$/.test(boardData.color) ? boardData.color : '#4a6fa5';
