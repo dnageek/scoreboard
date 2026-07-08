@@ -1135,6 +1135,20 @@ function selectReason(id) {
     renderReasonCards();
 }
 
+function moveReasonToTop(reasonId) {
+    const reasonIndex = reasons.findIndex(reason => reason.id === reasonId);
+    if (reasonIndex <= 0) return;
+
+    const [reason] = reasons.splice(reasonIndex, 1);
+    reasons.unshift(reason);
+    renderReasonCards();
+
+    runIncrementalSync(() => boardRequest('/reasons/reorder', {
+        method: 'PUT',
+        body: { reasons }
+    }));
+}
+
 function reconcileEntrySync(localEntryId, result) {
     if (!result) return;
 
@@ -1236,6 +1250,8 @@ function addReason() {
 function updateScoreByReasonId(reasonId, isAddition) {
     const reason = reasons.find(r => r.id === reasonId);
     if (!reason) return;
+
+    moveReasonToTop(reasonId);
 
     if (history.length > 0) {
         recalculateHistoryState();
