@@ -23,6 +23,7 @@ const PORT = process.env.PORT || 3000;
 const SESSION_COOKIE_PREFIX = 'scoreboard_session_';
 const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const BOARD_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+const MAX_REASON_ORDER_SIZE = 10000;
 
 // Middleware
 // Enable compression for all responses if available
@@ -175,6 +176,30 @@ function sanitizeReason(reason) {
   }
 
   return { id, text, score, type };
+}
+
+function applyReasonOrder(scoreBoard, reasonOrder) {
+  if (reasonOrder === undefined) {
+    return true;
+  }
+
+  if (!Array.isArray(reasonOrder) || reasonOrder.length > MAX_REASON_ORDER_SIZE) {
+    return false;
+  }
+
+  const sanitizedOrder = reasonOrder.map(id => cleanText(id, 80));
+  const reasonById = new Map((scoreBoard.reasons || []).map(reason => [reason.id, reason]));
+
+  if (
+    sanitizedOrder.some(id => !id || !reasonById.has(id)) ||
+    new Set(sanitizedOrder).size !== reasonById.size ||
+    sanitizedOrder.length !== reasonById.size
+  ) {
+    return false;
+  }
+
+  scoreBoard.reasons = sanitizedOrder.map(id => reasonById.get(id));
+  return true;
 }
 
 function sanitizeHistoryEntry(entry) {
@@ -687,6 +712,9 @@ app.post('/api/scoreboard/:syncId/entries', async (req, res) => {
     if (!sanitizedEntry || !isFiniteNumber(targetScore)) {
       return res.status(400).json({ message: 'A valid history entry and current score are required' });
     }
+    if (!applyReasonOrder(authResult.scoreBoard, req.body.reasonOrder)) {
+      return res.status(400).json({ message: 'The reason order is invalid' });
+    }
 
     const isResetEntry = sanitizedEntry.reason === 'Manual reset' && sanitizedEntry.reasonId === null;
     const previousScore = authResult.scoreBoard.currentScore;
@@ -701,12 +729,23 @@ app.post('/api/scoreboard/:syncId/entries', async (req, res) => {
       entryToStore.newScore = authResult.scoreBoard.currentScore;
     }
 
+    const previousEntry = authResult.scoreBoard.history[authResult.scoreBoard.history.length - 1];
+    const isChronologicalAppend = !previousEntry ||
+      new Date(entryToStore.timestamp).getTime() >= new Date(previousEntry.timestamp).getTime();
+
     authResult.scoreBoard.history.push(entryToStore);
-    synchronizeBoardHistory(authResult.scoreBoard);
+    // Normal score changes arrive in chronological order. Preserve Mongoose's
+    // efficient array $push instead of sorting and replacing the entire history.
+    // Offline/out-of-order entries still use the full reconciliation path.
+    if (!isChronologicalAppend) {
+      synchronizeBoardHistory(authResult.scoreBoard);
+    }
     authResult.scoreBoard.lastUpdated = Date.now();
     await authResult.scoreBoard.save();
 
-    const savedEntry = authResult.scoreBoard.history.find(entry => entry.id === entryToStore.id) || entryToStore;
+    const savedEntry = isChronologicalAppend
+      ? entryToStore
+      : authResult.scoreBoard.history.find(entry => entry.id === entryToStore.id) || entryToStore;
 
     res.status(201).json({ entry: savedEntry, currentScore: authResult.scoreBoard.currentScore });
   } catch (err) {
@@ -734,8 +773,7 @@ app.delete('/api/scoreboard/:syncId/entries/:entryId', async (req, res) => {
 
     res.json({
       message: 'History entry deleted successfully',
-      currentScore: authResult.scoreBoard.currentScore,
-      history: authResult.scoreBoard.history
+      currentScore: authResult.scoreBoard.currentScore
     });
   } catch (err) {
     res.status(500).json({ message: err.message });

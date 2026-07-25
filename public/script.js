@@ -1137,16 +1137,12 @@ function selectReason(id) {
 
 function moveReasonToTop(reasonId) {
     const reasonIndex = reasons.findIndex(reason => reason.id === reasonId);
-    if (reasonIndex <= 0) return;
+    if (reasonIndex <= 0) return false;
 
     const [reason] = reasons.splice(reasonIndex, 1);
     reasons.unshift(reason);
     renderReasonCards();
-
-    runIncrementalSync(() => boardRequest('/reasons/reorder', {
-        method: 'PUT',
-        body: { reasons }
-    }));
+    return true;
 }
 
 function reconcileEntrySync(localEntryId, result) {
@@ -1159,12 +1155,10 @@ function reconcileEntrySync(localEntryId, result) {
         }
     }
 
-    if (typeof result.currentScore === 'number') {
+    const latestEntry = history[history.length - 1];
+    const hasNewerLocalEntries = latestEntry && latestEntry.id !== localEntryId;
+    if (!hasNewerLocalEntries && typeof result.currentScore === 'number') {
         currentScore = result.currentScore;
-    }
-
-    if (history.length > 0) {
-        recalculateHistoryState();
     }
 
     updateScoreDisplay();
@@ -1251,11 +1245,7 @@ function updateScoreByReasonId(reasonId, isAddition) {
     const reason = reasons.find(r => r.id === reasonId);
     if (!reason) return;
 
-    moveReasonToTop(reasonId);
-
-    if (history.length > 0) {
-        recalculateHistoryState();
-    }
+    const reasonOrderChanged = moveReasonToTop(reasonId);
 
     // Apply score change based on reason type
     let scoreChange;
@@ -1296,12 +1286,15 @@ function updateScoreByReasonId(reasonId, isAddition) {
     renderHistory();
     renderStatistics();
 
+    const scoreAtChange = currentScore;
+    const reasonOrder = reasonOrderChanged ? reasons.map(entry => entry.id) : undefined;
     runIncrementalSync(async () => {
         const result = await boardRequest('/entries', {
             method: 'POST',
             body: {
                 entry: newEntry,
-                currentScore
+                currentScore: scoreAtChange,
+                reasonOrder
             }
         });
         reconcileEntrySync(newEntry.id, result);
@@ -1441,10 +1434,6 @@ function resetScore() {
         alert('Please enter a valid score value');
         return;
     }
-
-    if (history.length > 0) {
-        recalculateHistoryState();
-    }
     
     // Calculate the score change
     const scoreChange = newScore - currentScore;
@@ -1476,12 +1465,13 @@ function resetScore() {
     // Clear the input
     resetScoreValue.value = '';
 
+    const scoreAtReset = currentScore;
     runIncrementalSync(async () => {
         const result = await boardRequest('/entries', {
             method: 'POST',
             body: {
                 entry: resetEntry,
-                currentScore
+                currentScore: scoreAtReset
             }
         });
         reconcileEntrySync(resetEntry.id, result);
