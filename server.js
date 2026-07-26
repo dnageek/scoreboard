@@ -5,6 +5,13 @@ const dotenv = require('dotenv');
 const path = require('path');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
+const {
+  applyEntryToBoard,
+  isFiniteNumber,
+  sanitizeHistoryEntry,
+  sanitizeReason,
+  synchronizeBoardHistory
+} = require('./lib/scoreboard-sync');
 
 // Try to load compression module
 let compression;
@@ -23,7 +30,6 @@ const PORT = process.env.PORT || 3000;
 const SESSION_COOKIE_PREFIX = 'scoreboard_session_';
 const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const BOARD_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
-const MAX_REASON_ORDER_SIZE = 10000;
 
 // Middleware
 // Enable compression for all responses if available
@@ -152,115 +158,6 @@ function issueSessionCookie(res, scoreBoard, syncId, remember = true) {
 
 function clearSessionCookie(res, syncId) {
   appendSetCookie(res, serializeCookie(sessionCookieName(syncId), '', { maxAge: -1000 }));
-}
-
-function cleanText(value, maxLength = 500) {
-  if (typeof value !== 'string') return '';
-  return value.trim().slice(0, maxLength);
-}
-
-function isFiniteNumber(value) {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-function sanitizeReason(reason) {
-  if (!reason || typeof reason !== 'object') return null;
-
-  const id = cleanText(reason.id, 80);
-  const text = cleanText(reason.text, 300);
-  const score = reason.score;
-  const type = reason.type === 'subtract' ? 'subtract' : 'add';
-
-  if (!id || !text || !isFiniteNumber(score) || score <= 0) {
-    return null;
-  }
-
-  return { id, text, score, type };
-}
-
-function applyReasonOrder(scoreBoard, reasonOrder) {
-  if (reasonOrder === undefined) {
-    return true;
-  }
-
-  if (!Array.isArray(reasonOrder) || reasonOrder.length > MAX_REASON_ORDER_SIZE) {
-    return false;
-  }
-
-  const sanitizedOrder = reasonOrder.map(id => cleanText(id, 80));
-  const reasonById = new Map((scoreBoard.reasons || []).map(reason => [reason.id, reason]));
-
-  if (
-    sanitizedOrder.some(id => !id || !reasonById.has(id)) ||
-    new Set(sanitizedOrder).size !== reasonById.size ||
-    sanitizedOrder.length !== reasonById.size
-  ) {
-    return false;
-  }
-
-  scoreBoard.reasons = sanitizedOrder.map(id => reasonById.get(id));
-  return true;
-}
-
-function sanitizeHistoryEntry(entry) {
-  if (!entry || typeof entry !== 'object') return null;
-
-  const id = cleanText(entry.id, 80);
-  const reason = cleanText(entry.reason, 500);
-  const scoreChange = entry.scoreChange;
-  const timestamp = entry.timestamp ? new Date(entry.timestamp) : new Date();
-  const reasonId = entry.reasonId ? cleanText(entry.reasonId, 80) : null;
-
-  if (!id || !reason || !isFiniteNumber(scoreChange) || Number.isNaN(timestamp.getTime())) {
-    return null;
-  }
-
-  const sanitized = {
-    id,
-    timestamp,
-    reason,
-    scoreChange,
-    reasonId
-  };
-
-  if (isFiniteNumber(entry.newScore)) {
-    sanitized.newScore = entry.newScore;
-  }
-
-  return sanitized;
-}
-
-function isManualResetEntry(entry) {
-  return entry.reason === 'Manual reset' && entry.reasonId === null && isFiniteNumber(entry.newScore);
-}
-
-function synchronizeBoardHistory(scoreBoard) {
-  const sortedHistory = [...(scoreBoard.history || [])].sort((a, b) => (
-    new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-  ));
-
-  if (sortedHistory.length === 0) {
-    scoreBoard.history = [];
-    scoreBoard.currentScore = 0;
-    return;
-  }
-
-  let runningScore = 0;
-  scoreBoard.history = sortedHistory.map(entry => {
-    const nextEntry = entry.toObject ? entry.toObject() : { ...entry };
-
-    if (isManualResetEntry(nextEntry)) {
-      nextEntry.scoreChange = nextEntry.newScore - runningScore;
-      runningScore = nextEntry.newScore;
-    } else {
-      runningScore += nextEntry.scoreChange;
-      nextEntry.newScore = runningScore;
-    }
-
-    return nextEntry;
-  });
-
-  scoreBoard.currentScore = runningScore;
 }
 
 // MongoDB connection with options
@@ -707,39 +604,17 @@ app.post('/api/scoreboard/:syncId/entries', async (req, res) => {
       return res.status(authResult.status).json({ message: authResult.message });
     }
 
-    const sanitizedEntry = sanitizeHistoryEntry(req.body.entry);
-    const targetScore = req.body.currentScore;
-    if (!sanitizedEntry || !isFiniteNumber(targetScore)) {
-      return res.status(400).json({ message: 'A valid history entry and current score are required' });
-    }
-    if (!applyReasonOrder(authResult.scoreBoard, req.body.reasonOrder)) {
-      return res.status(400).json({ message: 'The reason order is invalid' });
-    }
-
-    const isResetEntry = sanitizedEntry.reason === 'Manual reset' && sanitizedEntry.reasonId === null;
-    const previousScore = authResult.scoreBoard.currentScore;
-    const entryToStore = { ...sanitizedEntry };
-
-    if (isResetEntry) {
-      entryToStore.scoreChange = targetScore - previousScore;
-      entryToStore.newScore = targetScore;
-      authResult.scoreBoard.currentScore = targetScore;
-    } else {
-      authResult.scoreBoard.currentScore += entryToStore.scoreChange;
-      entryToStore.newScore = authResult.scoreBoard.currentScore;
+    const entryResult = applyEntryToBoard(
+      authResult.scoreBoard,
+      req.body.entry,
+      req.body.currentScore,
+      req.body.reasonOrder
+    );
+    if (!entryResult.ok) {
+      return res.status(400).json({ message: entryResult.message });
     }
 
-    const previousEntry = authResult.scoreBoard.history[authResult.scoreBoard.history.length - 1];
-    const isChronologicalAppend = !previousEntry ||
-      new Date(entryToStore.timestamp).getTime() >= new Date(previousEntry.timestamp).getTime();
-
-    authResult.scoreBoard.history.push(entryToStore);
-    // Normal score changes arrive in chronological order. Preserve Mongoose's
-    // efficient array $push instead of sorting and replacing the entire history.
-    // Offline/out-of-order entries still use the full reconciliation path.
-    if (!isChronologicalAppend) {
-      synchronizeBoardHistory(authResult.scoreBoard);
-    }
+    const { entryToStore, isChronologicalAppend } = entryResult;
     authResult.scoreBoard.lastUpdated = Date.now();
     await authResult.scoreBoard.save();
 
