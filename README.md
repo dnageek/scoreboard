@@ -84,6 +84,7 @@ The optional Telegram bot can read and update an allowlisted set of scoreboards 
 
 - `/score` — show the current board and score
 - `/scores` — show scores from every allowed scoreboard
+- `/history` — show the 10 most recent changes for the selected board
 - `/boards` — choose an allowed scoreboard with buttons
 - `/board board-id` — select an allowed scoreboard directly
 - `/reasons` — show buttons for the board's configured add/subtract reasons
@@ -104,12 +105,15 @@ Only Telegram user IDs in `TELEGRAM_ALLOWED_USER_IDS` can use the bot. In groups
    TELEGRAM_BOT_TOKEN=<BotFather token>
    TELEGRAM_WEBHOOK_SECRET=<generated secret>
    TELEGRAM_ALLOWED_USER_IDS=123456789,987654321
+   TELEGRAM_READY_CHAT_IDS=123456789
    TELEGRAM_BOARD_ID=<default board ID>
    TELEGRAM_BOARD_IDS=<default-board,second-board,third-board>
    PUBLIC_BASE_URL=https://your-service.onrender.com
    ```
 
 `TELEGRAM_BOARD_IDS` is optional. If omitted, the bot remains in single-board mode using `TELEGRAM_BOARD_ID`. Every listed board ID is visible to authorized Telegram users, and selection is persisted by chat in MongoDB.
+
+On each server startup, the bot sends a ready notification after MongoDB and the webhook are available. It defaults to the private chats in `TELEGRAM_ALLOWED_USER_IDS`; set optional `TELEGRAM_READY_CHAT_IDS` to notify specific private chats or groups instead.
 
 5. Deploy the service. The app registers `PUBLIC_BASE_URL/api/telegram/webhook` automatically and preserves pending Telegram updates across restarts.
 

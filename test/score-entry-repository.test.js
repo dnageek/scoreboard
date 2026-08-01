@@ -71,6 +71,23 @@ test('entry retries are idempotent when MongoDB already contains the entry ID', 
   assert.equal(result.currentScore, 8);
 });
 
+test('history query returns only the requested most recent entries', async () => {
+  let receivedProjection;
+  const model = {
+    findOne(filter, projection) {
+      assert.deepEqual(filter, { syncId: 'board' });
+      receivedProjection = projection;
+      return { async lean() { return { currentScore: 8, history: [sampleEntry()] }; } };
+    }
+  };
+  const repository = createScoreEntryRepository(model);
+
+  const result = await repository.getHistory('board', 10);
+
+  assert.deepEqual(receivedProjection, { currentScore: 1, history: { $slice: -10 } });
+  assert.equal(result.history[0].id, 'entry-1');
+});
+
 test('concurrent score updates use the stored score instead of a stale client score', () => {
   const first = buildAtomicEntryPipeline(sampleEntry({ id: 'first', scoreChange: 2 }), 2);
   const second = buildAtomicEntryPipeline(sampleEntry({ id: 'second', scoreChange: 3 }), 3);

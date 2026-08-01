@@ -8,6 +8,7 @@ const {
   loadTelegramConfig,
   parseBoardIds,
   parseCommand,
+  parseReadyChatIds,
   reasonKey,
   reasonKeyboard,
   safeSecretEqual
@@ -17,7 +18,7 @@ function config(overrides = {}) {
   return {
     token: 'token', webhookSecret: 'secret', boardId: 'board',
     baseUrl: 'https://example.onrender.com', allowedUserIds: new Set(['123']),
-    boardIds: ['board', 'second'], ...overrides
+    readyChatIds: new Set(['123']), boardIds: ['board', 'second'], ...overrides
   };
 }
 
@@ -77,6 +78,7 @@ test('loadTelegramConfig parses an allowlist and HTTPS base URL', () => {
   });
 
   assert.deepEqual([...result.allowedUserIds], ['123', '456']);
+  assert.deepEqual([...result.readyChatIds], ['123', '456']);
   assert.equal(result.baseUrl, 'https://example.com');
   assert.deepEqual(result.boardIds, ['board-1']);
 });
@@ -85,6 +87,12 @@ test('webhook secrets require an exact match', () => {
   assert.equal(safeSecretEqual('secret', 'secret'), true);
   assert.equal(safeSecretEqual('secret', 'different'), false);
   assert.equal(safeSecretEqual(undefined, 'secret'), false);
+});
+
+test('ready notification chats accept private and group IDs', () => {
+  assert.deepEqual([...parseReadyChatIds('', new Set(['123']))], ['123']);
+  assert.deepEqual([...parseReadyChatIds('123,-100', new Set())], ['123', '-100']);
+  assert.throws(() => parseReadyChatIds('not-an-id', new Set()), /numeric chat IDs/);
 });
 
 test('parseBoardIds preserves the default and rejects invalid allowlists', () => {
@@ -96,6 +104,7 @@ test('parseBoardIds preserves the default and rejects invalid allowlists', () =>
 test('parseCommand validates targeting and whole-number adjustments', () => {
   assert.deepEqual(parseCommand('/score@score_bot', 'score_bot'), { name: 'score' });
   assert.deepEqual(parseCommand('/scores', 'score_bot'), { name: 'scores' });
+  assert.deepEqual(parseCommand('/history', 'score_bot'), { name: 'history' });
   assert.equal(parseCommand('/score@another_bot', 'score_bot'), null);
   assert.deepEqual(parseCommand('/board second', 'score_bot'), { name: 'board', boardId: 'second' });
   assert.deepEqual(parseCommand('/add 5 workout', 'score_bot'), {
@@ -178,6 +187,35 @@ test('/scores lists every allowlisted board and marks missing boards unavailable
   assert.equal(api.calls.at(-1)[1].text, 'Scores:\nboard: 10\nsecond: unavailable');
 });
 
+test('/history lists the selected board entries newest first', async () => {
+  const api = fakeApi();
+  const repository = {
+    async getHistory(boardId, limit) {
+      assert.equal(boardId, 'second');
+      assert.equal(limit, 10);
+      return { history: [
+        { timestamp: new Date('2026-07-31T12:00:00.000Z'), reason: 'First', scoreChange: 2, newScore: 2 },
+        { timestamp: new Date('2026-08-01T12:00:00.000Z'), reason: 'Second', scoreChange: -1, newScore: 1 }
+      ] };
+    },
+    async getSummary() { throw new Error('not expected'); },
+    async append() { throw new Error('not expected'); }
+  };
+  const bot = createTelegramBot({
+    config: config(), repository, preferences: fakePreferences('second'), api, logger: { log() {} }
+  });
+
+  await bot.handleUpdate({
+    update_id: 11,
+    message: { text: '/history', from: { id: 123 }, chat: { id: 10, type: 'private' } }
+  });
+
+  assert.equal(
+    api.calls.at(-1)[1].text,
+    'Recent history — second:\n1. -1 — Second → 1 (2026-08-01T12:00:00.000Z)\n2. +2 — First → 2 (2026-07-31T12:00:00.000Z)'
+  );
+});
+
 test('/boards displays allowed boards and the persisted chat selection', async () => {
   const api = fakeApi();
   const repository = fakeRepository();
@@ -245,6 +283,20 @@ test('registerWebhook configures the protected Render endpoint without dropping 
   assert.equal(call[1].secret_token, 'secret');
   assert.deepEqual(call[1].allowed_updates, ['message', 'callback_query']);
   assert.equal(call[1].drop_pending_updates, false);
+});
+
+test('notifyReady sends a startup confirmation to configured chats', async () => {
+  const api = fakeApi();
+  const bot = createTelegramBot({
+    config: config({ readyChatIds: new Set(['123', '-100']) }),
+    repository: fakeRepository(), preferences: fakePreferences(), api, logger: { log() {}, error() {} }
+  });
+
+  await bot.notifyReady();
+
+  const messages = api.calls.filter(([method]) => method === 'sendMessage');
+  assert.deepEqual(messages.map(([, payload]) => payload.chat_id), ['123', '-100']);
+  assert.match(messages[0][1].text, /server is ready/i);
 });
 
 test('numeric adjustments use deterministic Telegram entry IDs', async () => {

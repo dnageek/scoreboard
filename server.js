@@ -275,6 +275,18 @@ const telegramBot = telegramConfig
     api: createTelegramApi(telegramConfig.token)
   })
   : null;
+let telegramWebhookReady = false;
+let telegramReadyNotificationSent = false;
+
+function maybeNotifyTelegramReady() {
+  if (!telegramBot || !telegramWebhookReady || telegramReadyNotificationSent || mongoose.connection.readyState !== 1) return;
+  telegramReadyNotificationSent = true;
+  telegramBot.notifyReady().catch(err => {
+    console.error('Telegram ready notification failed:', err.message);
+  });
+}
+
+mongoose.connection.on('connected', maybeNotifyTelegramReady);
 
 async function getAuthorizedBoard(syncId, providedPassword, req) {
   if (!isValidSyncId(syncId)) {
@@ -796,8 +808,13 @@ app.get('*', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   if (telegramBot) {
-    telegramBot.registerWebhook().catch(err => {
-      console.error('Telegram webhook registration failed:', err.message);
-    });
+    telegramBot.registerWebhook()
+      .then(() => {
+        telegramWebhookReady = true;
+        maybeNotifyTelegramReady();
+      })
+      .catch(err => {
+        console.error('Telegram webhook registration failed:', err.message);
+      });
   }
 });
