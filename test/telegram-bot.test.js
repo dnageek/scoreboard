@@ -196,7 +196,8 @@ test('/boards displays allowed boards and the persisted chat selection', async (
 
 test('/board selects an allowed board for the current chat', async () => {
   const api = fakeApi();
-  const repository = fakeRepository({ currentScore: 20, reasons: [] });
+  const reason = { id: 'exercise', text: 'Exercise', score: 5, type: 'add' };
+  const repository = fakeRepository({ currentScore: 20, reasons: [reason] });
   const preferences = fakePreferences();
   const bot = createTelegramBot({ config: config(), repository, preferences, api, logger: { log() {} } });
 
@@ -207,6 +208,10 @@ test('/board selects an allowed board for the current chat', async () => {
 
   assert.deepEqual(preferences.sets, [{ chatId: '-10', boardId: 'second' }]);
   assert.match(api.calls.at(-1)[1].text, /Selected board: second/);
+  assert.equal(
+    api.calls.at(-1)[1].reply_markup.inline_keyboard[0][0].callback_data,
+    `r:${boardKey('second')}:${reasonKey('exercise')}`
+  );
 });
 
 test('board callbacks persist selection for the shared chat', async () => {
