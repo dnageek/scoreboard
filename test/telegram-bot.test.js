@@ -3,8 +3,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  boardKey,
   createTelegramBot,
   loadTelegramConfig,
+  parseBoardIds,
   parseCommand,
   reasonKey,
   reasonKeyboard,
@@ -14,7 +16,8 @@ const {
 function config(overrides = {}) {
   return {
     token: 'token', webhookSecret: 'secret', boardId: 'board',
-    baseUrl: 'https://example.onrender.com', allowedUserIds: new Set(['123']), ...overrides
+    baseUrl: 'https://example.onrender.com', allowedUserIds: new Set(['123']),
+    boardIds: ['board', 'second'], ...overrides
   };
 }
 
@@ -26,6 +29,20 @@ function fakeApi() {
     async setWebhook(payload) { calls.push(['setWebhook', payload]); },
     async sendMessage(payload) { calls.push(['sendMessage', payload]); },
     async answerCallbackQuery(payload) { calls.push(['answerCallbackQuery', payload]); }
+  };
+}
+
+function fakePreferences(initial = null) {
+  let boardId = initial;
+  const sets = [];
+  return {
+    sets,
+    async get() { return boardId; },
+    async set(chatId, selectedBoardId) {
+      boardId = selectedBoardId;
+      sets.push({ chatId: String(chatId), boardId: selectedBoardId });
+      return boardId;
+    }
   };
 }
 
@@ -61,6 +78,7 @@ test('loadTelegramConfig parses an allowlist and HTTPS base URL', () => {
 
   assert.deepEqual([...result.allowedUserIds], ['123', '456']);
   assert.equal(result.baseUrl, 'https://example.com');
+  assert.deepEqual(result.boardIds, ['board-1']);
 });
 
 test('webhook secrets require an exact match', () => {
@@ -69,9 +87,16 @@ test('webhook secrets require an exact match', () => {
   assert.equal(safeSecretEqual(undefined, 'secret'), false);
 });
 
+test('parseBoardIds preserves the default and rejects invalid allowlists', () => {
+  assert.deepEqual(parseBoardIds('default', 'second,third'), ['default', 'second', 'third']);
+  assert.deepEqual(parseBoardIds('default', ''), ['default']);
+  assert.throws(() => parseBoardIds('default', 'bad board'), /invalid/);
+});
+
 test('parseCommand validates targeting and whole-number adjustments', () => {
   assert.deepEqual(parseCommand('/score@score_bot', 'score_bot'), { name: 'score' });
   assert.equal(parseCommand('/score@another_bot', 'score_bot'), null);
+  assert.deepEqual(parseCommand('/board second', 'score_bot'), { name: 'board', boardId: 'second' });
   assert.deepEqual(parseCommand('/add 5 workout', 'score_bot'), {
     name: 'add', amount: 5, description: 'workout'
   });
@@ -85,17 +110,17 @@ test('reason keyboards use compact callbacks and two buttons per row', () => {
     { id: 'two', text: 'Two', score: 2, type: 'subtract' },
     { id: 'three', text: 'Three', score: 3, type: 'add' }
   ];
-  const keyboard = reasonKeyboard(reasons);
+  const keyboard = reasonKeyboard(reasons, 'board');
 
   assert.equal(keyboard.inline_keyboard.length, 2);
-  assert.equal(keyboard.inline_keyboard[0][0].callback_data, `r:${reasonKey('one')}`);
+  assert.equal(keyboard.inline_keyboard[0][0].callback_data, `r:${boardKey('board')}:${reasonKey('one')}`);
   assert.ok(keyboard.inline_keyboard.flat().every(button => Buffer.byteLength(button.callback_data) <= 64));
 });
 
 test('malformed webhook updates are ignored safely', async () => {
   const api = fakeApi();
   const repository = fakeRepository();
-  const bot = createTelegramBot({ config: config(), repository, api, logger: { log() {} } });
+  const bot = createTelegramBot({ config: config(), repository, preferences: fakePreferences(), api, logger: { log() {} } });
 
   await assert.doesNotReject(bot.handleUpdate(null));
   assert.equal(api.calls.length, 0);
@@ -105,7 +130,7 @@ test('malformed webhook updates are ignored safely', async () => {
 test('unauthorized users cannot read or change a board', async () => {
   const api = fakeApi();
   const repository = fakeRepository();
-  const bot = createTelegramBot({ config: config(), repository, api, logger: { log() {} } });
+  const bot = createTelegramBot({ config: config(), repository, preferences: fakePreferences(), api, logger: { log() {} } });
 
   await bot.handleUpdate({
     update_id: 1,
@@ -119,7 +144,7 @@ test('unauthorized users cannot read or change a board', async () => {
 test('score commands work in groups when directed to this bot', async () => {
   const api = fakeApi();
   const repository = fakeRepository();
-  const bot = createTelegramBot({ config: config(), repository, api, logger: { log() {} } });
+  const bot = createTelegramBot({ config: config(), repository, preferences: fakePreferences(), api, logger: { log() {} } });
 
   await bot.handleUpdate({
     update_id: 2,
@@ -127,14 +152,63 @@ test('score commands work in groups when directed to this bot', async () => {
   });
 
   assert.equal(api.calls.at(-1)[0], 'sendMessage');
-  assert.equal(api.calls.at(-1)[1].text, 'Score: 10');
+  assert.equal(api.calls.at(-1)[1].text, 'Board: board\nScore: 10');
   assert.equal(api.calls.some(([method]) => method === 'setWebhook'), false);
+});
+
+test('/boards displays allowed boards and the persisted chat selection', async () => {
+  const api = fakeApi();
+  const repository = fakeRepository();
+  const preferences = fakePreferences('second');
+  const bot = createTelegramBot({ config: config(), repository, preferences, api, logger: { log() {} } });
+
+  await bot.handleUpdate({
+    update_id: 8,
+    message: { text: '/boards', from: { id: 123 }, chat: { id: -10, type: 'group' } }
+  });
+
+  const message = api.calls.at(-1)[1];
+  assert.equal(message.text, 'Selected board: second');
+  assert.equal(message.reply_markup.inline_keyboard[1][0].text, '✓ second');
+});
+
+test('/board selects an allowed board for the current chat', async () => {
+  const api = fakeApi();
+  const repository = fakeRepository({ currentScore: 20, reasons: [] });
+  const preferences = fakePreferences();
+  const bot = createTelegramBot({ config: config(), repository, preferences, api, logger: { log() {} } });
+
+  await bot.handleUpdate({
+    update_id: 9,
+    message: { text: '/board second', from: { id: 123 }, chat: { id: -10, type: 'group' } }
+  });
+
+  assert.deepEqual(preferences.sets, [{ chatId: '-10', boardId: 'second' }]);
+  assert.match(api.calls.at(-1)[1].text, /Selected board: second/);
+});
+
+test('board callbacks persist selection for the shared chat', async () => {
+  const api = fakeApi();
+  const repository = fakeRepository({ currentScore: 20, reasons: [] });
+  const preferences = fakePreferences();
+  const bot = createTelegramBot({ config: config(), repository, preferences, api, logger: { log() {} } });
+
+  await bot.handleUpdate({
+    update_id: 10,
+    callback_query: {
+      id: 'board-callback', data: `b:${boardKey('second')}`, from: { id: 123 },
+      message: { chat: { id: -10, type: 'group' } }
+    }
+  });
+
+  assert.equal(preferences.sets[0].boardId, 'second');
+  assert.equal(api.calls.at(-1)[0], 'answerCallbackQuery');
 });
 
 test('registerWebhook configures the protected Render endpoint without dropping updates', async () => {
   const api = fakeApi();
   const bot = createTelegramBot({
-    config: config(), repository: fakeRepository(), api, logger: { log() {} }
+    config: config(), repository: fakeRepository(), preferences: fakePreferences(), api, logger: { log() {} }
   });
 
   await bot.registerWebhook();
@@ -149,7 +223,7 @@ test('registerWebhook configures the protected Render endpoint without dropping 
 test('numeric adjustments use deterministic Telegram entry IDs', async () => {
   const api = fakeApi();
   const repository = fakeRepository();
-  const bot = createTelegramBot({ config: config(), repository, api, logger: { log() {} } });
+  const bot = createTelegramBot({ config: config(), repository, preferences: fakePreferences(), api, logger: { log() {} } });
 
   await bot.handleUpdate({
     update_id: 42,
@@ -161,16 +235,31 @@ test('numeric adjustments use deterministic Telegram entry IDs', async () => {
   assert.equal(repository.appends[0].entry.reason, 'Telegram: late');
 });
 
+test('score changes apply to the board persisted for that chat', async () => {
+  const api = fakeApi();
+  const repository = fakeRepository();
+  const bot = createTelegramBot({
+    config: config(), repository, preferences: fakePreferences('second'), api, logger: { log() {} }
+  });
+
+  await bot.handleUpdate({
+    update_id: 50,
+    message: { text: '/add 2 bonus', from: { id: 123 }, chat: { id: -10, type: 'group' } }
+  });
+
+  assert.equal(repository.appends[0].syncId, 'second');
+});
+
 test('reason callbacks re-fetch and apply the configured reason', async () => {
   const reason = { id: 'exercise', text: 'Exercise', score: 5, type: 'add' };
   const api = fakeApi();
   const repository = fakeRepository({ currentScore: 10, reasons: [reason] });
-  const bot = createTelegramBot({ config: config(), repository, api, logger: { log() {} } });
+  const bot = createTelegramBot({ config: config(), repository, preferences: fakePreferences(), api, logger: { log() {} } });
 
   await bot.handleUpdate({
     update_id: 77,
     callback_query: {
-      id: 'callback', data: `r:${reasonKey(reason.id)}`, from: { id: 123 },
+      id: 'callback', data: `r:${boardKey('board')}:${reasonKey(reason.id)}`, from: { id: 123 },
       message: { chat: { id: -10, type: 'group' } }
     }
   });

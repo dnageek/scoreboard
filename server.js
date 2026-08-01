@@ -13,6 +13,7 @@ const {
   synchronizeBoardHistory
 } = require('./lib/scoreboard-sync');
 const { createScoreEntryRepository } = require('./lib/score-entry-repository');
+const { createTelegramPreferenceRepository } = require('./lib/telegram-preference-repository');
 const {
   createTelegramApi,
   createTelegramBot,
@@ -222,6 +223,22 @@ const SessionTokenSchema = new mongoose.Schema({
   }
 });
 
+const TelegramChatPreferenceSchema = new mongoose.Schema({
+  chatId: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  boardId: {
+    type: String,
+    required: true
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
 const ScoreBoardSchema = new mongoose.Schema({
   syncId: {
     type: String,
@@ -247,11 +264,14 @@ const ScoreBoardSchema = new mongoose.Schema({
 
 // Create models
 const ScoreBoard = mongoose.model('ScoreBoard', ScoreBoardSchema);
+const TelegramChatPreference = mongoose.model('TelegramChatPreference', TelegramChatPreferenceSchema);
 const scoreEntryRepository = createScoreEntryRepository(ScoreBoard);
+const telegramPreferences = createTelegramPreferenceRepository(TelegramChatPreference);
 const telegramBot = telegramConfig
   ? createTelegramBot({
     config: telegramConfig,
     repository: scoreEntryRepository,
+    preferences: telegramPreferences,
     api: createTelegramApi(telegramConfig.token)
   })
   : null;
