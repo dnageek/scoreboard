@@ -95,6 +95,7 @@ test('parseBoardIds preserves the default and rejects invalid allowlists', () =>
 
 test('parseCommand validates targeting and whole-number adjustments', () => {
   assert.deepEqual(parseCommand('/score@score_bot', 'score_bot'), { name: 'score' });
+  assert.deepEqual(parseCommand('/scores', 'score_bot'), { name: 'scores' });
   assert.equal(parseCommand('/score@another_bot', 'score_bot'), null);
   assert.deepEqual(parseCommand('/board second', 'score_bot'), { name: 'board', boardId: 'second' });
   assert.deepEqual(parseCommand('/add 5 workout', 'score_bot'), {
@@ -154,6 +155,27 @@ test('score commands work in groups when directed to this bot', async () => {
   assert.equal(api.calls.at(-1)[0], 'sendMessage');
   assert.equal(api.calls.at(-1)[1].text, 'Board: board\nScore: 10');
   assert.equal(api.calls.some(([method]) => method === 'setWebhook'), false);
+});
+
+test('/scores lists every allowlisted board and marks missing boards unavailable', async () => {
+  const api = fakeApi();
+  const repository = {
+    async getSummary(boardId) {
+      if (boardId === 'board') return { currentScore: 10, reasons: [] };
+      return null;
+    },
+    async append() { throw new Error('not expected'); }
+  };
+  const bot = createTelegramBot({
+    config: config(), repository, preferences: fakePreferences(), api, logger: { log() {} }
+  });
+
+  await bot.handleUpdate({
+    update_id: 7,
+    message: { text: '/scores', from: { id: 123 }, chat: { id: 10, type: 'private' } }
+  });
+
+  assert.equal(api.calls.at(-1)[1].text, 'Scores:\nboard: 10\nsecond: unavailable');
 });
 
 test('/boards displays allowed boards and the persisted chat selection', async () => {

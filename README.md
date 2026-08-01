@@ -83,6 +83,7 @@ The optional Telegram bot can read and update an allowlisted set of scoreboards 
 ### Commands
 
 - `/score` — show the current board and score
+- `/scores` — show scores from every allowed scoreboard
 - `/boards` — choose an allowed scoreboard with buttons
 - `/board board-id` — select an allowed scoreboard directly
 - `/reasons` — show buttons for the board's configured add/subtract reasons
