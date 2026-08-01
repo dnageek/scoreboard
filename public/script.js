@@ -8,6 +8,8 @@ const existingBoardId = document.getElementById('existing-board-id');
 const existingBoardPassword = document.getElementById('existing-board-password');
 const accessBoardBtn = document.getElementById('access-board-btn');
 const boardList = document.getElementById('board-list');
+const serverStatusElement = document.getElementById('server-status');
+const serverStatusMessage = document.getElementById('server-status-message');
 const logoutBtn = document.getElementById('logout-btn');
 const deleteBoardBtn = document.getElementById('delete-board-btn');
 const deleteConfirmModal = document.getElementById('delete-confirm-modal');
@@ -247,13 +249,24 @@ function removeCookie(name) {
     Cookies.remove(name);
 }
 
+function setServerStatus(state, message) {
+    if (!serverStatusElement || !serverStatusMessage) return;
+    serverStatusElement.hidden = state === 'ready';
+    serverStatusElement.dataset.state = state;
+    serverStatusMessage.textContent = message;
+}
+
+function delay(milliseconds) {
+    return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
 // Initialize the app
 function init() {
     // Set initial UI state
     showLoginPage();
 
     // Check server availability first
-    checkServerAvailability().then(serverAvailable => {
+    checkServerAvailability({ waitForWake: true }).then(serverAvailable => {
         if (serverAvailable) {
             // Set up container drag and drop event listeners
             reasonCardsContainer.addEventListener('dragover', handleDragOver);
@@ -650,35 +663,64 @@ async function deleteBoard() {
 }
 
 // Check if server is available
-async function checkServerAvailability() {
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+async function checkServerAvailability({ waitForWake = false } = {}) {
+    const startedAt = Date.now();
+    const maxWaitMs = waitForWake ? 90000 : 5000;
+    let lastError = null;
 
-        const response = await fetch(`${API_URL}/scoreboard/test-connection`, {
-            method: 'GET',
-            signal: controller.signal,
-            // Prevent caching to ensure fresh response
-            headers: {
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache'
-            }
-        });
-
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-            offlineMode = false;
-            return true;
-        }
-    } catch (err) {
-        console.error('Server connection error:', err);
-        offlineMode = true;
-        updateSyncStatus('Server unavailable - cannot load your data');
+    if (waitForWake) {
+        setServerStatus('connecting', 'Connecting to the server...');
     }
+
+    while (Date.now() - startedAt < maxWaitMs) {
+        const elapsedMs = Date.now() - startedAt;
+        if (waitForWake && elapsedMs >= 2000) {
+            setServerStatus(
+                'starting',
+                'The server may be waking up. This can take about a minute...'
+            );
+        }
+
+        const controller = new AbortController();
+        const remainingMs = maxWaitMs - elapsedMs;
+        const timeoutId = setTimeout(() => controller.abort(), Math.min(15000, remainingMs));
+
+        try {
+            const response = await fetch(`${API_URL}/scoreboard/test-connection`, {
+                method: 'GET',
+                signal: controller.signal,
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
+            });
+            const contentType = response.headers.get('content-type') || '';
+            const result = contentType.includes('application/json') ? await response.json() : null;
+
+            if (response.ok && result && result.status === 'ok') {
+                offlineMode = false;
+                setServerStatus('ready', '');
+                updateSyncStatus('');
+                return true;
+            }
+            lastError = new Error('Server is not ready yet');
+        } catch (err) {
+            lastError = err;
+            console.error('Server connection error:', err);
+        } finally {
+            clearTimeout(timeoutId);
+        }
+
+        if (!waitForWake) break;
+        await delay(3000);
+    }
+
+    offlineMode = true;
+    setServerStatus('error', 'The server is still unavailable. Please try again.');
+    updateSyncStatus('Server unavailable - cannot load your data');
+    if (lastError) console.error('Server availability check failed:', lastError);
     return false;
 }
-
 function generateSyncId() {
     return Math.random().toString(36).substring(2, 10);
 }
