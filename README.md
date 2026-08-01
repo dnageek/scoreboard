@@ -76,6 +76,41 @@ A comprehensive web-based score board application designed for tracking points w
 5. **Access the application**
    Open your browser to `http://localhost:3000`
 
+## Telegram Bot
+
+The optional Telegram bot can read and update one scoreboard from private chats or groups. It runs inside the existing Express service and uses the same MongoDB connection, so Telegram never receives database credentials.
+
+### Commands
+
+- `/score` — show the current score
+- `/reasons` — show buttons for the board's configured add/subtract reasons
+- `/add 5 workout` — add an arbitrary whole-number adjustment
+- `/subtract 2 late` — subtract an arbitrary whole-number adjustment
+- `/help` — show command help
+
+Only Telegram user IDs in `TELEGRAM_ALLOWED_USER_IDS` can use the bot. In groups, commands can be directed to the bot as `/score@your_bot_name`.
+
+### Render setup
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and copy its API token.
+2. Before deploying the webhook, send the bot a message and call Telegram's `getUpdates` API to find each authorized user's numeric `from.id`.
+3. Generate a webhook secret, for example with `openssl rand -hex 32`.
+4. Add these environment variables to the existing Render web service:
+
+   ```env
+   TELEGRAM_BOT_TOKEN=<BotFather token>
+   TELEGRAM_WEBHOOK_SECRET=<generated secret>
+   TELEGRAM_ALLOWED_USER_IDS=123456789,987654321
+   TELEGRAM_BOARD_ID=<existing board ID>
+   PUBLIC_BASE_URL=https://your-service.onrender.com
+   ```
+
+5. Deploy the service. The app registers `PUBLIC_BASE_URL/api/telegram/webhook` automatically and preserves pending Telegram updates across restarts.
+
+Leave all Telegram variables unset to disable the integration. Partial or invalid configuration intentionally prevents startup so the bot cannot run with missing security controls.
+
+Free Render services sleep after inactivity. A Telegram webhook wakes the service, but the first command can take about a minute; Telegram retries failed delivery, and deterministic update IDs prevent the score from being applied twice.
+
 ## 🗄️ MongoDB Atlas Setup Guide
 
 ### Step-by-Step Configuration

@@ -12,6 +12,13 @@ const {
   sanitizeReason,
   synchronizeBoardHistory
 } = require('./lib/scoreboard-sync');
+const { createScoreEntryRepository } = require('./lib/score-entry-repository');
+const {
+  createTelegramApi,
+  createTelegramBot,
+  loadTelegramConfig,
+  safeSecretEqual
+} = require('./lib/telegram-bot');
 
 // Try to load compression module
 let compression;
@@ -23,6 +30,7 @@ try {
 
 // Load environment variables
 dotenv.config();
+const telegramConfig = loadTelegramConfig(process.env);
 
 // Initialize Express app
 const app = express();
@@ -239,6 +247,14 @@ const ScoreBoardSchema = new mongoose.Schema({
 
 // Create models
 const ScoreBoard = mongoose.model('ScoreBoard', ScoreBoardSchema);
+const scoreEntryRepository = createScoreEntryRepository(ScoreBoard);
+const telegramBot = telegramConfig
+  ? createTelegramBot({
+    config: telegramConfig,
+    repository: scoreEntryRepository,
+    api: createTelegramApi(telegramConfig.token)
+  })
+  : null;
 
 async function getAuthorizedBoard(syncId, providedPassword, req) {
   if (!isValidSyncId(syncId)) {
@@ -321,6 +337,24 @@ app.get('/api/scoreboard/test-connection', (req, res) => {
   res.header('Access-Control-Allow-Headers', 'Content-Type');
 
   res.status(200).json({ status: 'ok', message: 'Server is available' });
+});
+
+app.post('/api/telegram/webhook', async (req, res) => {
+  if (!telegramBot || !telegramConfig) {
+    return res.status(404).json({ message: 'Telegram bot is not configured' });
+  }
+
+  if (!safeSecretEqual(req.headers['x-telegram-bot-api-secret-token'], telegramConfig.webhookSecret)) {
+    return res.status(401).json({ message: 'Invalid webhook secret' });
+  }
+
+  try {
+    await telegramBot.handleUpdate(req.body);
+    return res.sendStatus(200);
+  } catch (err) {
+    console.error('Telegram update failed:', err.message);
+    return res.status(500).json({ message: 'Telegram update failed' });
+  }
 });
 
 // Get all available boards (without sensitive data)
@@ -615,14 +649,27 @@ app.post('/api/scoreboard/:syncId/entries', async (req, res) => {
     }
 
     const { entryToStore, isChronologicalAppend } = entryResult;
+    if (isChronologicalAppend) {
+      const result = await scoreEntryRepository.append({
+        syncId,
+        entry: entryToStore,
+        targetScore: req.body.currentScore,
+        reasons: req.body.reasonOrder === undefined ? undefined : authResult.scoreBoard.reasons
+      });
+      if (!result.boardFound) {
+        return res.status(404).json({ message: 'Score board not found' });
+      }
+      return res.status(result.duplicate ? 200 : 201).json({
+        entry: result.entry,
+        currentScore: result.currentScore,
+        duplicate: result.duplicate
+      });
+    }
+
     authResult.scoreBoard.lastUpdated = Date.now();
     await authResult.scoreBoard.save();
-
-    const savedEntry = isChronologicalAppend
-      ? entryToStore
-      : authResult.scoreBoard.history.find(entry => entry.id === entryToStore.id) || entryToStore;
-
-    res.status(201).json({ entry: savedEntry, currentScore: authResult.scoreBoard.currentScore });
+    const savedEntry = authResult.scoreBoard.history.find(entry => entry.id === entryToStore.id) || entryToStore;
+    return res.status(201).json({ entry: savedEntry, currentScore: authResult.scoreBoard.currentScore });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -728,4 +775,9 @@ app.get('*', (req, res) => {
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  if (telegramBot) {
+    telegramBot.registerWebhook().catch(err => {
+      console.error('Telegram webhook registration failed:', err.message);
+    });
+  }
 });

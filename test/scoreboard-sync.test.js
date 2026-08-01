@@ -156,6 +156,4 @@ test('applyEntryToBoard rejects invalid input without changing score or history'
   assert.deepEqual(board.history, []);
 });
 
-test.todo('entry retries are idempotent when the same entry ID was already stored');
 test.todo('the incremental queue pauses and performs a health check after a network failure');
-test.todo('concurrent devices cannot overwrite each other’s current score');
