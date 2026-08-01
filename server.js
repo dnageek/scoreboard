@@ -36,6 +36,7 @@ const telegramConfig = loadTelegramConfig(process.env);
 // Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 3000;
+const SERVER_STARTED_AT = new Date();
 const SESSION_COOKIE_PREFIX = 'scoreboard_session_';
 const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const BOARD_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
@@ -272,7 +273,12 @@ const telegramBot = telegramConfig
     config: telegramConfig,
     repository: scoreEntryRepository,
     preferences: telegramPreferences,
-    api: createTelegramApi(telegramConfig.token)
+    api: createTelegramApi(telegramConfig.token),
+    statusProvider: () => ({
+      databaseReady: mongoose.connection.readyState === 1,
+      startedAt: SERVER_STARTED_AT,
+      uptimeSeconds: process.uptime()
+    })
   })
   : null;
 let telegramWebhookReady = false;

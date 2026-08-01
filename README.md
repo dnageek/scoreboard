@@ -85,6 +85,8 @@ The optional Telegram bot can read and update an allowlisted set of scoreboards 
 - `/score` — show the current board and score
 - `/scores` — show scores from every allowed scoreboard
 - `/history` — show the 10 most recent changes for the selected board
+- `/status` — show server, database, uptime, and selected-board status
+- `/undo` — confirm and reverse the latest score change
 - `/boards` — choose an allowed scoreboard with buttons
 - `/board board-id` — select an allowed scoreboard directly
 - `/reasons` — show buttons for the board's configured add/subtract reasons

@@ -105,6 +105,8 @@ test('parseCommand validates targeting and whole-number adjustments', () => {
   assert.deepEqual(parseCommand('/score@score_bot', 'score_bot'), { name: 'score' });
   assert.deepEqual(parseCommand('/scores', 'score_bot'), { name: 'scores' });
   assert.deepEqual(parseCommand('/history', 'score_bot'), { name: 'history' });
+  assert.deepEqual(parseCommand('/status', 'score_bot'), { name: 'status' });
+  assert.deepEqual(parseCommand('/undo', 'score_bot'), { name: 'undo' });
   assert.equal(parseCommand('/score@another_bot', 'score_bot'), null);
   assert.deepEqual(parseCommand('/board second', 'score_bot'), { name: 'board', boardId: 'second' });
   assert.deepEqual(parseCommand('/add 5 workout', 'score_bot'), {
@@ -164,6 +166,118 @@ test('score commands work in groups when directed to this bot', async () => {
   assert.equal(api.calls.at(-1)[0], 'sendMessage');
   assert.equal(api.calls.at(-1)[1].text, 'Board: board\nScore: 10');
   assert.equal(api.calls.some(([method]) => method === 'setWebhook'), false);
+});
+
+test('/status reports readiness, uptime, start time, and selected board', async () => {
+  const api = fakeApi();
+  const bot = createTelegramBot({
+    config: config(),
+    repository: fakeRepository(),
+    preferences: fakePreferences('second'),
+    api,
+    statusProvider: () => ({
+      databaseReady: true,
+      startedAt: new Date('2026-08-01T12:00:00.000Z'),
+      uptimeSeconds: 93780
+    }),
+    logger: { log() {} }
+  });
+
+  await bot.handleUpdate({
+    update_id: 5,
+    message: { text: '/status', from: { id: 123 }, chat: { id: 10, type: 'private' } }
+  });
+
+  assert.equal(
+    api.calls.at(-1)[1].text,
+    'Server: ready\nDatabase: connected\nUptime: 1d 2h 3m\nStarted: 2026-08-01T12:00:00.000Z\nBoard: second'
+  );
+});
+
+test('/status responds without querying preferences when the database is unavailable', async () => {
+  const api = fakeApi();
+  const preferences = {
+    async get() { throw new Error('database unavailable'); },
+    async set() { throw new Error('not expected'); }
+  };
+  const bot = createTelegramBot({
+    config: config(), repository: fakeRepository(), preferences, api,
+    statusProvider: () => ({ databaseReady: false, uptimeSeconds: 60 }),
+    logger: { log() {} }
+  });
+
+  await bot.handleUpdate({
+    update_id: 6,
+    message: { text: '/status', from: { id: 123 }, chat: { id: 10, type: 'private' } }
+  });
+
+  assert.match(api.calls.at(-1)[1].text, /Database: unavailable/);
+  assert.match(api.calls.at(-1)[1].text, /Board: board/);
+});
+
+test('/undo asks for confirmation of the selected board latest change', async () => {
+  const api = fakeApi();
+  const entry = { id: 'latest', reason: 'Exercise', scoreChange: 5, newScore: 15 };
+  const repository = {
+    async getHistory(boardId, limit) {
+      assert.equal(boardId, 'second');
+      assert.equal(limit, 1);
+      return { currentScore: 15, history: [entry] };
+    }
+  };
+  const bot = createTelegramBot({
+    config: config(), repository, preferences: fakePreferences('second'), api, logger: { log() {} }
+  });
+
+  await bot.handleUpdate({
+    update_id: 6,
+    message: { text: '/undo', from: { id: 123 }, chat: { id: 10, type: 'private' } }
+  });
+
+  const message = api.calls.at(-1)[1];
+  assert.match(message.text, /Undo the latest change on second/);
+  assert.equal(
+    message.reply_markup.inline_keyboard[0][0].callback_data,
+    `u:${boardKey('second')}:${reasonKey('latest')}`
+  );
+  assert.ok(message.reply_markup.inline_keyboard[0].every(button => Buffer.byteLength(button.callback_data) <= 64));
+});
+
+test('undo confirmation appends one deterministic inverse entry', async () => {
+  const api = fakeApi();
+  const appends = [];
+  const entry = { id: 'latest', reason: 'Exercise', scoreChange: 5, newScore: 15 };
+  const repository = {
+    async getHistory(boardId, limit) {
+      assert.equal(boardId, 'second');
+      assert.equal(limit, 50);
+      return { currentScore: 15, history: [entry] };
+    },
+    async append(change) {
+      appends.push(change);
+      return { boardFound: true, duplicate: false, currentScore: 10 };
+    }
+  };
+  const bot = createTelegramBot({
+    config: config(), repository, preferences: fakePreferences('second'), api, logger: { log() {} }
+  });
+
+  await bot.handleUpdate({
+    update_id: 12,
+    callback_query: {
+      id: 'undo-callback',
+      data: `u:${boardKey('second')}:${reasonKey('latest')}`,
+      from: { id: 123 },
+      message: { chat: { id: 10, type: 'private' } }
+    }
+  });
+
+  assert.equal(appends.length, 1);
+  assert.equal(appends[0].syncId, 'second');
+  assert.equal(appends[0].entry.id, `telegram-undo-${reasonKey('latest')}`);
+  assert.equal(appends[0].entry.scoreChange, -5);
+  assert.equal(appends[0].entry.reason, 'Undo: Exercise');
+  assert.match(api.calls.at(-1)[1].text, /Score: 10/);
 });
 
 test('/scores lists every allowlisted board and marks missing boards unavailable', async () => {
